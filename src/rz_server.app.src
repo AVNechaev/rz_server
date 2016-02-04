@@ -1,0 +1,12 @@
+{application, rz_server,
+ [
+  {description, "Zhilevsky' server robot"},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { rz_server_app, []}},
+  {env, []}
+ ]}.

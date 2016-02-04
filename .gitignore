@@ -1,0 +1,6 @@
+deps
+ebin
+rel/rz_server
+.idea/workspace.xml
+.idea/uiDesigner.xml
+.rebar
