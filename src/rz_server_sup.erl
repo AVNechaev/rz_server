@@ -9,20 +9,42 @@
 %% Supervisor callbacks
 -export([init/1]).
 
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
+-include_lib("iqfeed_client/include/iqfeed_client.hrl").
 
 %% ===================================================================
 %% API functions
 %% ===================================================================
 
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+  supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, []} }.
+  Names = [timeframe_worker:reg_name(N) || {N, _} <- iqfeed_util:get_env(rz_server, frames)],
+  TickFun = fun(Tick) ->
+    lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names)
+    end,
+
+  Frames = [
+    {
+      timeframe_worker:reg_name(Name),
+      {timeframe_worker, start_link, [Name, Params]},
+      permanent, brutal_kill, worker, [timeframe_worker]
+    } || {Name, Params} <- iqfeed_util:get_env(rz_server, frames)
+  ],
+
+  IQFeed = {iqfeed,
+    {iq_sup, start_link, [TickFun]},
+    permanent, infinity, supervisor, [iq_sup]},
+
+  {
+    ok,
+    {{one_for_one, 5, 10},
+      lists:flatten([
+        Frames,
+        IQFeed
+      ])}}.
 

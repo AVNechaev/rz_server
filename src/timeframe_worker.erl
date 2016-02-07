@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2]).
+-export([start_link/2, reg_name/1, add_tick/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -25,19 +25,20 @@
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
 
 -record(candle, {
-  open :: float(),
-  close :: float(),
-  high :: float(),
-  low :: float(),
-  vol :: float()
+  open = 0 :: float(),
+  close = 0 :: float(),
+  high = 0 :: float(),
+  low = 0 :: float(),
+  vol = 0 :: float()
 }).
 
 -record(state, {
-  enabled :: boolean(),
-  date :: calendar:date(),
-  begin_time :: calendar:time(),
+  empty :: boolean(),
+  trading_start :: calendar:time(),
+  candles_start :: integer(),
   tid :: ets:tid(),
-  duration :: pos_integer()
+  current_tref = undefined :: undefined | reference(),
+  duration :: pos_integer() %длительность свечки
 }).
 
 -type frame_params() :: list().
@@ -48,7 +49,15 @@
 %%%===================================================================
 -spec(start_link(Name :: atom(), Params :: frame_params()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link(Name, Params) ->
-  gen_server:start_link({localp, Name}, ?MODULE, [Params], []).
+  gen_server:start_link({local, reg_name(Name)}, ?MODULE, [Params], []).
+
+%%--------------------------------------------------------------------
+-spec reg_name(Name :: atom()) -> atom().
+reg_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_frame_wroker").
+
+%%--------------------------------------------------------------------
+-spec add_tick(ThisName :: atom(), Tick :: #tick{}) -> ok.
+add_tick(ThisName, Tick) -> gen_server:cast(ThisName, {add_tick, Tick}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -56,19 +65,85 @@ start_link(Name, Params) ->
 init([Params]) ->
   Tid = ets:new(frame_candles, [private, set]),
   {ok,
-    #state{
-      tid = Tid,
-      duration = proplists:get_value(duration, Params),
-      enabled = false
-    }}.
+      #state{
+        empty = true,
+        tid = Tid,
+        trading_start = iqfeed_util:get_env(rz_server, trading_start),
+        duration = proplists:get_value(duration, Params)
+      }}.
+
+%%--------------------------------------------------------------------NowSeconds
+handle_cast({add_tick, Tick}, State = #state{empty = true}) ->
+  NewState = reinit_state(Tick#tick.time, State),
+  update_current_candle(Tick, NewState),
+  {noreply, NewState#state{empty = false}};
+%%---
+handle_cast({add_tick, Tick}, State) ->
+  NewState = if
+               (Tick#tick.time - State#state.candles_start) >= State#state.duration -> reinit_state(Tick#tick.time, State);
+               true -> State
+             end,
+  update_current_candle(Tick, NewState),
+  {noreply, NewState#state{empty = false}}.
+
+%%--------------------------------------------------------------------
+handle_info({timeout, _, reinit}, State = #state{empty = true}) -> {noreply, State};
+%% этот вариант возможен, когда в 1 секунду сначала придет отсчет, пересчитается новый таймер, а потом сработает старый
+handle_info({timeout, TRef, reinit}, State = #state{current_tref = OtherTRef}) when TRef =/= OtherTRef-> {noreply, State};
+handle_info({timeout, _, reinit}, State) ->
+  flush_candles(State),
+  ets:delete_all_objects(State#state.tid),
+  {noreply, State#state{empty = true}}.
 
 %%--------------------------------------------------------------------
 handle_call(_Request, _From, _State) -> exit(handle_call_unsupported).
-handle_cast(_Request, _State) -> exit(handle_cast_unsupported).
-handle_info(_Info, _State) -> exit(handle_info_unsupported).
 terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV}, #state{tid = Tid}) ->
+  case ets:lookup(Tid, Name) of
+    [] ->
+      NewCandle = #candle{open = LP, close = LP, high = LP, low = LP, vol = LV},
+      true = ets:insert_new(Tid, {Name, NewCandle});
+    [{_, C}] ->
+      U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}],
+      U2 = if
+             LP > C#candle.high -> [{#candle.high, LP} | U1];
+             true -> U1
+           end,
+      U3 = if
+             LP < C#candle.low -> [{#candle.low, LP} | U2];
+             true -> U2
+           end,
+      ets:update_element(Tid, Name, U3)
+  end.
+
+%%--------------------------------------------------------------------
+reinit_state(TickTime, State = #state{duration = Duration, trading_start = TradingStart}) ->
+  flush_candles(State),
+  ets:delete_all_objects(State#state.tid),
+
+  {D, _} = calendar:gregorian_seconds_to_datetime(TickTime),
+
+  ExpectedStart = (TickTime div Duration) * Duration,
+  TradingStartSeconds = calendar:datetime_to_gregorian_seconds({D, TradingStart}),
+  Start = if
+            ExpectedStart < TradingStartSeconds -> TradingStartSeconds;
+            true -> ExpectedStart
+          end,
+  TRef = erlang:start_timer(Duration * 1000, self(), reinit),
+  lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
+  State#state{candles_start = Start, empty = true, current_tref = TRef}.
+
+%%--------------------------------------------------------------------
+flush_candles(State) ->
+  {{Y, M, D}, {H, M, S}} = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
+  [
+    lager:info(
+      "Candle,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
+      [D,M,Y,H,M,S,K,V#candle.open,V#candle.close,V#candle.high,V#candle.low,V#candle.vol])
+    || {K,V} <- ets:tab2list(State#state.tid)
+  ].
