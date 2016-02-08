@@ -25,6 +25,7 @@
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
 
 -record(candle, {
+  name :: instr_name(),
   open = 0 :: float(),
   close = 0 :: float(),
   high = 0 :: float(),
@@ -63,7 +64,7 @@ add_tick(ThisName, Tick) -> gen_server:cast(ThisName, {add_tick, Tick}).
 %%% gen_server callbacks
 %%%===================================================================
 init([Params]) ->
-  Tid = ets:new(frame_candles, [private, set]),
+  Tid = ets:new(frame_candles, [private, set, {keypos, #candle.name}]),
   {ok,
       #state{
         empty = true,
@@ -95,7 +96,7 @@ handle_info({timeout, _, reinit}, State) ->
   ets:delete_all_objects(State#state.tid),
   {noreply, State#state{empty = true}}.
 
-%%--------------------------------------------------------------------
+%%--------------------------------to_date------------------------------------
 handle_call(_Request, _From, _State) -> exit(handle_call_unsupported).
 terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
@@ -103,12 +104,13 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV}, #state{tid = Tid}) ->
+update_current_candle(#tick{time = T, name = Name, last_price = LP, last_vol = LV}, #state{tid = Tid}) ->
+  lager:debug("tiick ~p", [calendar:gregorian_seconds_to_datetime(T)]),
   case ets:lookup(Tid, Name) of
     [] ->
-      NewCandle = #candle{open = LP, close = LP, high = LP, low = LP, vol = LV},
-      true = ets:insert_new(Tid, {Name, NewCandle});
-    [{_, C}] ->
+      NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV},
+      true = ets:insert_new(Tid, NewCandle);
+    [C] ->
       U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}],
       U2 = if
              LP > C#candle.high -> [{#candle.high, LP} | U1];
@@ -118,12 +120,15 @@ update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV}, #state
              LP < C#candle.low -> [{#candle.low, LP} | U2];
              true -> U2
            end,
-      ets:update_element(Tid, Name, U3)
+      ets:update_element(Tid, C#candle.name, U3)
   end.
 
 %%--------------------------------------------------------------------
 reinit_state(TickTime, State = #state{duration = Duration, trading_start = TradingStart}) ->
-  flush_candles(State),
+  case State#state.empty of
+    false -> flush_candles(State);
+    true -> ok
+  end,
   ets:delete_all_objects(State#state.tid),
 
   {D, _} = calendar:gregorian_seconds_to_datetime(TickTime),
@@ -140,10 +145,10 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
-  {{Y, M, D}, {H, M, S}} = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
+  {{Y, M, D}, {H, Mi, S}} = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
   [
     lager:info(
-      "Candle,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
-      [D,M,Y,H,M,S,K,V#candle.open,V#candle.close,V#candle.high,V#candle.low,V#candle.vol])
-    || {K,V} <- ets:tab2list(State#state.tid)
+      "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
+      [State#state.duration,D,M,Y,H,Mi,S,C#candle.name,C#candle.open,C#candle.close,C#candle.high,C#candle.low,C#candle.vol])
+    || C <- ets:tab2list(State#state.tid)
   ].
