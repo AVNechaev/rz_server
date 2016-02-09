@@ -135,7 +135,12 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
             ExpectedStart < TradingStartSeconds -> TradingStartSeconds;
             true -> ExpectedStart
           end,
-  TRef = erlang:start_timer(Duration * 1000, self(), reinit),
+  % если на момент срабатывания таймера есть еще тики в очереди, то надо сначала
+  % обработать их; иначе при флуде тиков происходит повторная инициализация свечки
+  % как вариант, можно при достаточной пропускной способности поставить
+  % в reinit_timer (duration + 1), думая, что за секунду разгребутся остатки
+  % тиков предыдущей секунды
+  TRef = erlang:start_timer((Duration + 1) * 1000, self(), reinit),
   lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
   State#state{candles_start = Start, empty = true, current_tref = TRef}.
 
