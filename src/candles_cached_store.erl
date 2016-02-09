@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, store/2]).
+-export([start_link/3, store/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -27,32 +27,45 @@
 -include("internal.hrl").
 
 -record(state, {
-  cache = [] :: [{Dest :: string(), Candle :: #candle{}}],
+  cache = [] :: [{Name :: atom(), DT :: calendar:datetime(), Candle :: #candle{}}],
   max_size :: non_neg_integer(),
-  timeout :: pos_integer()
+  timeout :: pos_integer(),
+  destinations :: [{Name :: atom(), StatName :: atom()}]
 }).
 
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================
 %%% API
 %%%===================================================================
--spec(start_link(MaxSize :: non_neg_integer(), Timeout :: pos_integer()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(MaxSize, Timeout) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [MaxSize, Timeout], []).
+-spec(start_link(
+    Tables :: [{Name :: atom(), TableName :: string()}],
+    MaxSize :: non_neg_integer(),
+    Timeout :: pos_integer()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link(Tables, MaxSize, Timeout) ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [Tables, MaxSize, Timeout], []).
 
 %%--------------------------------------------------------------------
--spec store(Dest :: string(), Candles :: [#candle{}]) -> ok.
-store(Dest, Candles) -> gen_server:cast(?SERVER, {store, Dest, Candles}).
+-spec store(Dest :: atom(), DateTime :: calendar:datetime(), Candles :: [#candle{}]) -> ok.
+store(Dest, DateTime, Candles) -> gen_server:cast(?SERVER, {store, Dest, DateTime, Candles}).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init([MaxSize, Timeout]) ->
-  {ok, #state{max_size = MaxSize, timeout = Timeout}}.
+init([Tables, MaxSize, Timeout]) ->
+  Dests = lists:map(
+    fun({Name, TableName}) ->
+      StatName = list_to_atom(atom_to_list(Name) ++ "_stmt"),
+      emysql:prepare(
+        StatName,
+        "INSERT INTO " ++ TableName ++ " (name, ts, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)"),
+      {Name, StatName}
+    end,
+    Tables),
+  {ok, #state{max_size = MaxSize, timeout = Timeout, destinations = Dests}}.
 
 %%--------------------------------------------------------------------
-handle_cast({store, Dest, Candles}, State) ->
-  CurZipped = [{Dest, C} || C <- Candles],
+handle_cast({store, Dest, DateTime, Candles}, State) ->
+  CurZipped = [{Dest, DateTime, C} || C <- Candles],
   NewCached = CurZipped ++ State#state.cache,
   if
     erlang:length(NewCached) >= State#state.max_size ->
@@ -77,6 +90,26 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-flush(_Data, _State) ->
-  lager:info("Fushing candles cache..."),
+flush(Data, State) ->
+  lager:info("Flushing candles cache..."),
+  StoreFun = fun({Name, DT, C}) ->
+    emysql:execute(
+      mysql,
+      proplists:get_value(Name, State#state.destinations),
+      [
+        C#candle.name,
+        datetime_to_mysql(DT),
+        C#candle.open,
+        C#candle.high,
+        C#candle.low,
+        C#candle.close,
+        C#candle.vol
+      ]
+    )
+  end,
+  lists:foreach(StoreFun, Data),
   ok.
+
+%%--------------------------------------------------------------------
+datetime_to_mysql({{Y, M, D}, {H, Mi, S}}) ->
+  io_lib:format("~4.10.0B.~2.10.0B.~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B", [Y, M, D, H, Mi, S]).

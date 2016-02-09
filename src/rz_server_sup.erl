@@ -16,6 +16,7 @@
 %% ===================================================================
 
 start_link() ->
+  ok = emysql:add_pool(mysql, iqfeed_util:get_env(rz_server, emysql)),
   supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% ===================================================================
@@ -38,6 +39,7 @@ init([]) ->
 
   Cache = {candles_cache,
     {candles_cached_store, start_link, [
+      iqfeed_util:get_env(rz_server, cache_tables),
       iqfeed_util:get_env(rz_server, cache_size),
       iqfeed_util:get_env(rz_server, cache_timeout)
     ]},

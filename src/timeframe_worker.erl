@@ -32,7 +32,7 @@
   tid :: ets:tid(),
   current_tref = undefined :: undefined | reference(),
   duration :: pos_integer(), %длительность свечки
-  destination :: string()
+  name :: atom()
 }).
 
 -type frame_params() :: list().
@@ -43,7 +43,7 @@
 %%%===================================================================
 -spec(start_link(Name :: atom(), Params :: frame_params()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link(Name, Params) ->
-  gen_server:start_link({local, reg_name(Name)}, ?MODULE, [Params], []).
+  gen_server:start_link({local, reg_name(Name)}, ?MODULE, [Name, Params], []).
 
 %%--------------------------------------------------------------------
 -spec reg_name(Name :: atom()) -> atom().
@@ -56,7 +56,7 @@ add_tick(ThisName, Tick) -> gen_server:cast(ThisName, {add_tick, Tick}).
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init([Params]) ->
+init([Name, Params]) ->
   Tid = ets:new(frame_candles, [private, set, {keypos, #candle.name}]),
   {ok,
     #state{
@@ -64,7 +64,7 @@ init([Params]) ->
       tid = Tid,
       trading_start = iqfeed_util:get_env(rz_server, trading_start),
       duration = proplists:get_value(duration, Params),
-      destination = proplists:get_value(store_table, Params)
+      name = Name
     }}.
 
 %%--------------------------------------------------------------------
@@ -141,12 +141,13 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
-  {{Y, M, D}, {H, Mi, S}} = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
+  DT = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
+  {{Y, M, D}, {H, Mi, S}} = DT,
   Data = ets:tab2list(State#state.tid),
   [
     lager:info(
       "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
-      [State#state.duration, D, M, Y, H, Mi, S, C#candle.name, C#candle.open, C#candle.close, C#candle.high, C#candle.low, C#candle.vol])
+      [State#state.name, D, M, Y, H, Mi, S, C#candle.name, C#candle.open, C#candle.close, C#candle.high, C#candle.low, C#candle.vol])
     || C <- Data
   ],
-  ok = candles_cached_store:store(State#state.destination, Data).
+  ok = candles_cached_store:store(State#state.name, DT, Data).
