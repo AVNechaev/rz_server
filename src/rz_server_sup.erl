@@ -1,4 +1,3 @@
-
 -module(rz_server_sup).
 
 -behaviour(supervisor).
