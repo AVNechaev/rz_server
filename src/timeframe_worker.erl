@@ -24,22 +24,15 @@
 
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
 
--record(candle, {
-  name :: instr_name(),
-  open = 0 :: float(),
-  close = 0 :: float(),
-  high = 0 :: float(),
-  low = 0 :: float(),
-  vol = 0 :: float()
-}).
-
+-include("internal.hrl").
 -record(state, {
   empty :: boolean(),
   trading_start :: calendar:time(),
   candles_start :: integer(),
   tid :: ets:tid(),
   current_tref = undefined :: undefined | reference(),
-  duration :: pos_integer() %длительность свечки
+  duration :: pos_integer(), %длительность свечки
+  destination :: string()
 }).
 
 -type frame_params() :: list().
@@ -66,14 +59,15 @@ add_tick(ThisName, Tick) -> gen_server:cast(ThisName, {add_tick, Tick}).
 init([Params]) ->
   Tid = ets:new(frame_candles, [private, set, {keypos, #candle.name}]),
   {ok,
-      #state{
-        empty = true,
-        tid = Tid,
-        trading_start = iqfeed_util:get_env(rz_server, trading_start),
-        duration = proplists:get_value(duration, Params)
-      }}.
+    #state{
+      empty = true,
+      tid = Tid,
+      trading_start = iqfeed_util:get_env(rz_server, trading_start),
+      duration = proplists:get_value(duration, Params),
+      destination = proplists:get_value(store_table, Params)
+    }}.
 
-%%--------------------------------------------------------------------NowSeconds
+%%--------------------------------------------------------------------
 handle_cast({add_tick, Tick}, State = #state{empty = true}) ->
   NewState = reinit_state(Tick#tick.time, State),
   update_current_candle(Tick, NewState),
@@ -81,7 +75,8 @@ handle_cast({add_tick, Tick}, State = #state{empty = true}) ->
 %%---
 handle_cast({add_tick, Tick}, State) ->
   NewState = if
-               (Tick#tick.time - State#state.candles_start) >= State#state.duration -> reinit_state(Tick#tick.time, State);
+               (Tick#tick.time - State#state.candles_start) >= State#state.duration ->
+                 reinit_state(Tick#tick.time, State);
                true -> State
              end,
   update_current_candle(Tick, NewState),
@@ -90,7 +85,8 @@ handle_cast({add_tick, Tick}, State) ->
 %%--------------------------------------------------------------------
 handle_info({timeout, _, reinit}, State = #state{empty = true}) -> {noreply, State};
 %% этот вариант возможен, когда в 1 секунду сначала придет отсчет, пересчитается новый таймер, а потом сработает старый
-handle_info({timeout, TRef, reinit}, State = #state{current_tref = OtherTRef}) when TRef =/= OtherTRef-> {noreply, State};
+handle_info({timeout, TRef, reinit}, State = #state{current_tref = OtherTRef}) when TRef =/= OtherTRef ->
+  {noreply, State};
 handle_info({timeout, _, reinit}, State) ->
   flush_candles(State),
   ets:delete_all_objects(State#state.tid),
@@ -146,9 +142,11 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
 %%--------------------------------------------------------------------
 flush_candles(State) ->
   {{Y, M, D}, {H, Mi, S}} = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
+  Data = ets:tab2list(State#state.tid),
   [
     lager:info(
       "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
-      [State#state.duration,D,M,Y,H,Mi,S,C#candle.name,C#candle.open,C#candle.close,C#candle.high,C#candle.low,C#candle.vol])
-    || C <- ets:tab2list(State#state.tid)
-  ].
+      [State#state.duration, D, M, Y, H, Mi, S, C#candle.name, C#candle.open, C#candle.close, C#candle.high, C#candle.low, C#candle.vol])
+    || C <- Data
+  ],
+  ok = candles_cached_store:store(State#state.destination, Data).

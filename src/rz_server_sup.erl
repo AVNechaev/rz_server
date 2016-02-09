@@ -36,6 +36,13 @@ init([]) ->
     } || {Name, Params} <- iqfeed_util:get_env(rz_server, frames)
   ],
 
+  Cache = {candles_cache,
+    {candles_cached_store, start_link, [
+      iqfeed_util:get_env(rz_server, cache_size),
+      iqfeed_util:get_env(rz_server, cache_timeout)
+    ]},
+    permanent, brutal_kill, worker, [candles_cached_store]},
+
   IQFeed = {iqfeed,
     {iq_sup, start_link, [TickFun]},
     permanent, infinity, supervisor, [iq_sup]},
@@ -45,6 +52,7 @@ init([]) ->
     {{one_for_one, 5, 10},
       lists:flatten([
         Frames,
+        Cache,
         IQFeed
       ])}}.
 
