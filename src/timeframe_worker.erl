@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, reg_name/1, add_tick/2]).
+-export([start_link/2, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -53,11 +53,23 @@ reg_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_frame_wroker").
 -spec add_tick(ThisName :: atom(), Tick :: #tick{}) -> ok.
 add_tick(ThisName, Tick) -> gen_server:cast(ThisName, {add_tick, Tick}).
 
+%%--------------------------------------------------------------------
+-spec storage_name(FrameName :: atom()) -> atom().
+storage_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_ets_current_candles").
+
+%%--------------------------------------------------------------------
+-spec get_current_candle(InstrName :: atom(), StorageName :: atom()) -> {ok, #candle{}} | {error, not_found}.
+get_current_candle(InstrName, StorageName) ->
+  case ets:lookup(StorageName, InstrName) of
+    [] -> {error, not_found};
+    [C] -> {ok, C}
+  end.
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 init([Name, Params]) ->
-  Tid = ets:new(frame_candles, [private, set, {keypos, #candle.name}]),
+  Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
   {ok,
     #state{
       empty = true,
@@ -100,14 +112,14 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-update_current_candle(#tick{time = T, name = Name, last_price = LP, last_vol = LV}, #state{tid = Tid}) ->
+update_current_candle(#tick{time = T, name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask}, #state{tid = Tid}) ->
   lager:debug("tiick ~p", [calendar:gregorian_seconds_to_datetime(T)]),
   case ets:lookup(Tid, Name) of
     [] ->
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV},
       true = ets:insert_new(Tid, NewCandle);
     [C] ->
-      U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}],
+      U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}, {#candle.bid, Bid}, {#candle.ask, Ask}],
       U2 = if
              LP > C#candle.high -> [{#candle.high, LP} | U1];
              true -> U1
