@@ -93,18 +93,20 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 flush(Data, State) ->
   lager:info("Flushing candles cache..."),
   StoreFun = fun({Name, DT, C}) ->
+    Data = [
+      C#candle.name,
+      datetime_to_mysql(DT),
+      C#candle.open,
+      C#candle.high,
+      C#candle.low,
+      C#candle.close,
+      C#candle.vol
+    ],
+    lager:info("FLUSH REC:~p", [Data]),
     emysql:execute(
       mysql,
       proplists:get_value(Name, State#state.destinations),
-      [
-        C#candle.name,
-        datetime_to_mysql(DT),
-        C#candle.open,
-        C#candle.high,
-        C#candle.low,
-        C#candle.close,
-        C#candle.vol
-      ]
+      Data
     )
   end,
   lists:foreach(StoreFun, Data),
