@@ -68,7 +68,7 @@ set_instrs(ThisName, Instrs) -> gen_server:call(ThisName, {set_instrs, Instrs}).
 %%% gen_server callbacks
 %%%===================================================================
 init([Name, Params, Instrs]) ->
-  Storage = ets_limbuffer:create_storage(),
+  Storage = ets_limbuffer:create_storage(storage_name(Name)),
   Depth = proplists:get_value(history_depth, Params),
   Buffers = case proplists:get_value(buffers_on_the_fly, Params) of
               true -> dict:new();
