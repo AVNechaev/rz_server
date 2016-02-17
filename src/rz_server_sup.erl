@@ -28,6 +28,18 @@ init([]) ->
     lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names)
     end,
 
+  {ok, Instr} = iqfeed_util:load_instr_csv(
+    iqfeed_util:get_env(iqfeed_client, instr_file),
+    iqfeed_util:get_env(iqfeed_client, instr_file_header)
+  ),
+
+  Hist = [
+    {
+      online_history_worker:reg_name(Name),
+      {online_history_worker, start_link, [Name, Params, Instr]},
+      permanent, brutal_kill, worker, [online_history_worker]
+    } || {Name, Params} <- iqfeed_util:get_env(rz_server, frames)
+  ],
   Frames = [
     {
       timeframe_worker:reg_name(Name),
@@ -52,6 +64,7 @@ init([]) ->
     ok,
     {{one_for_one, 5, 10},
       lists:flatten([
+        Hist,
         Frames,
         Cache,
         IQFeed

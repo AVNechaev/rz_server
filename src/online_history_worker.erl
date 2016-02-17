@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/3, reg_name/1, add_recent_candle/2, storage_name/1, get_candle/4]).
+-export([start_link/3, reg_name/1, add_recent_candle/2, storage_name/1, get_candle/4, set_instrs/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -60,6 +60,10 @@ add_recent_candle(ThisName, Candle) -> gen_server:cast(ThisName, {add_recent_can
 get_candle(StorageName, Instr, Length, Depth) ->
   ets_limbuffer:get(StorageName, Instr, buf_counter_name(Instr), Length, Depth).
 
+%%--------------------------------------------------------------------
+-spec set_instrs(ThisName :: atom(), Instrs :: [instr_name()]) -> ok.
+set_instrs(ThisName, Instrs) -> gen_server:call(ThisName, {set_instrs, Instrs}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -97,7 +101,16 @@ handle_cast({add_recent_candle, Candle = #candle{name = Instr}}, State) ->
   {noreply, State}.
 
 %%--------------------------------------------------------------------
-handle_call(_Request, _From, _State) -> exit(handle_call_unsupported).
+handle_call({set_instrs, _}, _From, State = #state{buffer_on_the_fly = true}) -> {reply, ok, State};
+handle_call({set_instrs, Instrs}, _From, State) ->
+  lists:foreach(
+    fun(I) ->
+      ets_limbuffer:create_buffer(State#state.storage, I, buf_counter_name(I), State#state.depth)
+    end,
+    Instrs),
+  {reply, ok, State#state{}}.
+
+%%--------------------------------------------------------------------
 handle_info(_Info, _State) -> exit(handle_info_unsupported).
 
 %%--------------------------------------------------------------------

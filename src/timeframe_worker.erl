@@ -32,7 +32,8 @@
   tid :: ets:tid(),
   current_tref = undefined :: undefined | reference(),
   duration :: pos_integer(), %длительность свечки
-  name :: atom()
+  name :: atom(),
+  history_name :: atom()
 }).
 
 -type frame_params() :: list().
@@ -76,7 +77,8 @@ init([Name, Params]) ->
       tid = Tid,
       trading_start = iqfeed_util:get_env(rz_server, trading_start),
       duration = proplists:get_value(duration, Params),
-      name = Name
+      name = Name,
+      history_name = online_history_worker:reg_name(Name)
     }}.
 
 %%--------------------------------------------------------------------
@@ -162,9 +164,11 @@ flush_candles(State) ->
   {{Y, M, D}, {H, Mi, S}} = DT,
   Data = ets:tab2list(State#state.tid),
   [
-    lager:info(
-      "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
-      [State#state.name, D, M, Y, H, Mi, S, C#candle.name, C#candle.open, C#candle.close, C#candle.high, C#candle.low, C#candle.vol])
-    || C <- Data
+    begin
+      lager:info(
+        "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
+        [State#state.name, D, M, Y, H, Mi, S, C#candle.name, C#candle.open, C#candle.close, C#candle.high, C#candle.low, C#candle.vol]),
+      online_history_worker:add_recent_candle(State#state.history_name, C)
+    end || C <- Data
   ],
   ok = candles_cached_store:store(State#state.name, DT, Data).
