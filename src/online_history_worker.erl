@@ -53,7 +53,7 @@ storage_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_ets_history_buffer").
 
 %%--------------------------------------------------------------------
 -spec add_recent_candle(ThisName :: atom(), Candle :: #candle{}) -> ok.
-add_recent_candle(ThisName, Candle) -> gen_server:cast(ThisName, {add_recent_candle, Candle)}).
+add_recent_candle(ThisName, Candle) -> gen_server:cast(ThisName, {add_recent_candle, Candle}).
 
 %%--------------------------------------------------------------------
 -spec get_candle(StorageName :: atom(), Instr :: instr_name(), Length :: pos_integer(), Depth :: pos_integer()) -> {ok, #candle{}} | {error, not_found}.

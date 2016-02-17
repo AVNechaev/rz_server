@@ -40,6 +40,7 @@ init([]) ->
       permanent, brutal_kill, worker, [online_history_worker]
     } || {Name, Params} <- iqfeed_util:get_env(rz_server, frames)
   ],
+
   Frames = [
     {
       timeframe_worker:reg_name(Name),
