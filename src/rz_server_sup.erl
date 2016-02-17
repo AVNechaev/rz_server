@@ -9,7 +9,7 @@
 -export([init/1]).
 
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
-
+-compile([{parse_transfor, lager_transform}]).
 %% ===================================================================
 %% API functions
 %% ===================================================================
