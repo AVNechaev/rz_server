@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/3, reg_name/1, add_recent_candle/2, storage_name/1, get_candle/4]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -22,23 +22,82 @@
   terminate/2,
   code_change/3]).
 
--record(state, {}).
+-include_lib("iqfeed_client/include/iqfeed_client.hrl").
+-include("internal.hrl").
+
+-type buf_counter_name_t() :: {counter, instr_name()}.
+
+-record(state, {
+  name :: atom(),
+  storage :: ets_limbuffer:storage_t(),
+  depth :: non_neg_integer(),
+  buffer_on_the_fly :: boolean(),
+  known_buffers :: dict:dict(instr_name(), buf_counter_name_t()) | undefined
+}).
+
+-compile([{parse_transform, lager_transform}]).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
--spec(start_link() -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link() -> gen_server:start_link(?MODULE, [], []).
+-spec(start_link(Name :: atom(), Params :: list(), Instrs :: list()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link(Name, Params, Instrs) -> gen_server:start_link({local, reg_name(Name)}, ?MODULE, [Name, Params, Instrs], []).
+
+%%--------------------------------------------------------------------
+-spec reg_name(Name :: atom()) -> atom().
+reg_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_online_history_worker").
+
+%%--------------------------------------------------------------------
+-spec storage_name(Name :: atom()) -> atom().
+storage_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_ets_history_buffer").
+
+%%--------------------------------------------------------------------
+-spec add_recent_candle(ThisName :: atom(), Candle :: #candle{}) -> ok.
+add_recent_candle(ThisName, Candle) -> gen_server:cast(ThisName, {add_recent_candle, Candle)}).
+
+%%--------------------------------------------------------------------
+-spec get_candle(StorageName :: atom(), Instr :: instr_name(), Length :: pos_integer(), Depth :: pos_integer()) -> {ok, #candle{}} | {error, not_found}.
+get_candle(StorageName, Instr, Length, Depth) ->
+  ets_limbuffer:get(StorageName, Instr, buf_counter_name(Instr), Length, Depth).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init([]) ->
-  {ok, #state{}}.
+init([Name, Params, Instrs]) ->
+  Storage = ets_limbuffer:create_storage(),
+  Depth = proplists:get_value(history_depth, Params),
+  Buffers = case proplists:get_value(buffers_on_the_fly, Params) of
+              true -> dict:new();
+              false ->
+                lists:foreach(fun(I) -> ets_limbuffer:create_buffer(Storage, I, buf_counter_name(I), Depth) end, Instrs),
+                undefined
+            end,
+  {ok, #state{
+    name = Name,
+    storage = Storage,
+    depth = Depth,
+    buffer_on_the_fly = proplists:get_value(buffers_on_the_fly, Params),
+    known_buffers = Buffers}}.
+
+%%--------------------------------------------------------------------
+handle_cast({add_recent_candle, Candle = #candle{name = Instr}}, State = #state{buffer_on_the_fly = true, known_buffers = Buffers}) ->
+  CntName = buf_counter_name(Instr),
+  NewBuff = case dict:find(Instr, Buffers) of
+              error ->
+                ets_limbuffer:create_buffer(State#state.storage, Instr, CntName, State#state.depth),
+                dict:store(Instr, CntName, Buffers);
+              {ok, _} ->
+                Buffers
+            end,
+  ets_limbuffer:push(Candle, State#state.storage, Instr, CntName, State#state.depth),
+  {noreply, State#state{known_buffers = NewBuff}};
+%%---
+handle_cast({add_recent_candle, Candle = #candle{name = Instr}}, State) ->
+  ets_limbuffer:push(Candle, State#state.storage, Instr, buf_counter_name(Instr), State#state.depth),
+  {noreply, State}.
 
 %%--------------------------------------------------------------------
 handle_call(_Request, _From, _State) -> exit(handle_call_unsupported).
-handle_cast(_Request, _State) -> exit(handle_cast_unsupported).
 handle_info(_Info, _State) -> exit(handle_info_unsupported).
 
 %%--------------------------------------------------------------------
@@ -48,3 +107,5 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+-spec buf_counter_name(Instr :: instr_name()) -> buf_counter_name_t().
+buf_counter_name(Instr) -> {counter, Instr}.
