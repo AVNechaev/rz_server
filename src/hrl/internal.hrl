@@ -14,4 +14,13 @@
   ask = 0 :: float()
 }).
 
+-type pattern_index() :: non_neg_integer().
+-type pattern_text() :: binary() | string().
+
+-record(pattern, {
+  idx :: pattern_index(),
+  text :: pattern_text(),
+  md5 :: binary()
+}).
+
 -endif.
