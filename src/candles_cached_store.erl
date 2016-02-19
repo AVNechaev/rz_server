@@ -95,7 +95,7 @@ flush(Data, State) ->
   StoreFun = fun({Name, DT, C}) ->
     VV = [
       C#candle.name,
-      datetime_to_mysql(DT),
+      ?DATETIME_TO_MYSQL(DT),
       C#candle.open,
       C#candle.high,
       C#candle.low,
@@ -111,7 +111,3 @@ flush(Data, State) ->
   end,
   lists:foreach(StoreFun, Data),
   ok.
-
-%%--------------------------------------------------------------------
-datetime_to_mysql({{Y, M, D}, {H, Mi, S}}) ->
-  io_lib:format("~4.10.0B.~2.10.0B.~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B", [Y, M, D, H, Mi, S]).

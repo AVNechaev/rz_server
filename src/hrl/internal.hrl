@@ -23,4 +23,7 @@
   md5 :: binary()
 }).
 
+%%-define(DATETIME_TO_MYSQL({{Y, M, D}, {H, Mi, S}}), io_lib:format("~4.10.0B.~2.10.0B.~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B", [Y, M, D, H, Mi, S])).
+-define(DATETIME_TO_MYSQL(Data), begin {{Y, M, D}, {H, Mi, S}} = Data, io_lib:format("~4.10.0B.~2.10.0B.~2.10.0B ~2.10.0B:~2.10.0B:~2.10.0B", [Y, M, D, H, Mi, S]) end).
+
 -endif.

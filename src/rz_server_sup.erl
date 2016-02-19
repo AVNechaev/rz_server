@@ -35,6 +35,14 @@ init([]) ->
     iqfeed_util:get_env(iqfeed_client, instr_file_header)
   ),
 
+  MemCached = {memcached,
+    {erlmc, start_link, [[{
+      iqfeed_util:get_env(rz_server, memcached_ip),
+      iqfeed_util:get_env(rz_server, memcached_port),
+      1}]
+    ]},
+    permanent, brutal_kill, worker, [erlmc]
+  },
   Hist = [
     {
       online_history_worker:reg_name(Name),
@@ -67,6 +75,7 @@ init([]) ->
     ok,
     {{one_for_one, 5, 10},
       lists:flatten([
+        MemCached,
         Hist,
         Frames,
         Cache,

@@ -29,10 +29,12 @@
   empty :: boolean(),
   trading_start :: calendar:time(),
   candles_start :: integer(),
+  candles_start_bin :: binary(),
   tid :: ets:tid(),
   current_tref = undefined :: undefined | reference(),
   duration :: pos_integer(), %длительность свечки
   name :: atom(),
+  name_bin :: binary(),
   history_name :: atom()
 }).
 
@@ -78,6 +80,7 @@ init([Name, Params]) ->
       trading_start = iqfeed_util:get_env(rz_server, trading_start),
       duration = proplists:get_value(duration, Params),
       name = Name,
+      name_bin = atom_to_binary(Name, latin1),
       history_name = online_history_worker:reg_name(Name)
     }}.
 
@@ -114,11 +117,11 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-update_current_candle(#tick{time = T, name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask}, #state{tid = Tid}) ->
-  lager:debug("tiick ~p", [calendar:gregorian_seconds_to_datetime(T)]),
+update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask}, State = #state{tid = Tid}) ->
   case ets:lookup(Tid, Name) of
     [] ->
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV},
+      candle_to_memcached(NewCandle, State#state.name_bin, State#state.candles_start_bin),
       true = ets:insert_new(Tid, NewCandle);
     [C] ->
       U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}, {#candle.bid, Bid}, {#candle.ask, Ask}],
@@ -130,6 +133,8 @@ update_current_candle(#tick{time = T, name = Name, last_price = LP, last_vol = L
              LP < C#candle.low -> [{#candle.low, LP} | U2];
              true -> U2
            end,
+%%       TODO: заменить предыдущую свечу на текущую...
+      candle_to_memcached(C, State#state.name_bin, State#state.candles_start_bin),
       ets:update_element(Tid, C#candle.name, U3)
   end.
 
@@ -140,7 +145,6 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
     true -> ok
   end,
   ets:delete_all_objects(State#state.tid),
-
   {D, _} = calendar:gregorian_seconds_to_datetime(TickTime),
 
   ExpectedStart = (TickTime div Duration) * Duration,
@@ -156,7 +160,8 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
   % тиков предыдущей секунды
   TRef = erlang:start_timer((Duration + 1) * 1000, self(), reinit),
   lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
-  State#state{candles_start = Start, empty = true, current_tref = TRef}.
+  DT = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
+  State#state{candles_start = Start, candles_start_bin = ?DATETIME_TO_MYSQL(DT), empty = true, current_tref = TRef}.
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
@@ -172,3 +177,53 @@ flush_candles(State) ->
     end || C <- Data
   ],
   ok = candles_cached_store:store(State#state.name, DT, Data).
+
+%%--------------------------------------------------------------------
+candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vol = V}, NameBin, CandleStartBin) ->
+  Instr = case is_binary(N) of
+            true -> N;
+            false -> list_to_binary(N)
+          end,
+  Key = <<Instr/binary, ",", NameBin/binary>>,
+  {Mega, Sec, Micro} = erlang:now(),
+  TSB = integer_to_binary(Micro + Sec * 1000000 + Mega * 1000000000000),
+  OB = float_to_binary(O, [{decimals, 4}]),
+  HB = float_to_binary(H, [{decimals, 4}]),
+  LB = float_to_binary(L, [{decimals, 4}]),
+  CB = float_to_binary(C, [{decimals, 4}]),
+  VB = float_to_binary(V, [{decimals, 4}]),
+  Data = <<
+  "{""timestamp"":",
+  TSB/binary,
+  """data"":{",
+  """name"":",
+  """",
+  Instr/binary,
+  """,",
+  """ts"":",
+  """",
+  CandleStartBin/binary,
+  """,",
+  """open"":",
+  """",
+  OB/binary,
+  """,",
+  """high"":",
+  """",
+  HB/binary,
+  """,",
+  """low"":",
+  """",
+  LB/binary,
+  """,",
+  """close"":",
+  """",
+  CB/binary,
+  """,",
+  """volume"":",
+  """",
+  VB/binary,
+  """",
+  "}}"
+  >>,
+  erlmc:set(Key, Data).
