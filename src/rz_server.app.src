@@ -7,7 +7,7 @@
                   kernel,
                   stdlib,
                   lager,
-                  mcd,
+                  erlmc,
                   emysql
                  ]},
   {mod, { rz_server_app, []}},
