@@ -95,7 +95,7 @@ flush(Data, State) ->
   StoreFun = fun({Name, DT, C}) ->
     VV = [
       C#candle.name,
-      ?DATETIME_TO_MYSQL(DT),
+      util:datetime_to_mysql(DT),
       C#candle.open,
       C#candle.high,
       C#candle.low,
