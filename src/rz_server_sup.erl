@@ -15,7 +15,8 @@
 %% ===================================================================
 
 start_link() ->
-  ok = emysql:add_pool(mysql, iqfeed_util:get_env(rz_server, emysql)),
+  ok = emysql:add_pool(mysql_candles_store, iqfeed_util:get_env(rz_server, mysql_candles_store)),
+  ok = emysql:add_pool(mysql_config_store, iqfeed_util:get_env(rz_server, mysql_config_store)),
   supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% ===================================================================

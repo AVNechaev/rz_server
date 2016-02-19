@@ -104,7 +104,7 @@ flush(Data, State) ->
     ],
     lager:info("FLUSH REC: ~p", [VV]),
     emysql:execute(
-      mysql,
+      mysql_candles_store,
       proplists:get_value(Name, State#state.destinations),
       VV
     )
