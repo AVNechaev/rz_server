@@ -4,3 +4,5 @@ rel/rz_server
 .idea/workspace.xml
 .idea/uiDesigner.xml
 .rebar
+src/patterns_lex.erl
+src/patterns_parser.erl
