@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_pattern/1, compile_pattern/1]).
+-export([start_link/0, load_pattern/1, compile_pattern/1, check_patterns/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -42,6 +42,10 @@ start_link() -> gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 -spec load_pattern(Pat :: #pattern{}) -> ok.
 load_pattern(Pat) -> gen_server:call(?SERVER, {load_pattern, Pat}).
 
+%%--------------------------------------------------------------------
+-spec check_patterns(InstrName :: instr_name()) -> ok.
+check_patterns(Instr) -> gen_server:cast(?SERVER, {check_patterns, Instr}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
@@ -65,7 +69,11 @@ handle_call({load_pattern, Pat}, _From, State) ->
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
-handle_cast(_Request, _State) -> exit(handle_cast_unsupported).
+handle_cast({check_patterns, Instr}, State = #state{workers = W}) ->
+  [pat_exec_worker:check_patterns(P, Instr) || P <- W],
+  {noreply, State}.
+
+%%--------------------------------------------------------------------
 handle_info(_Info, _State) -> exit(handle_info_unsupported).
 
 %%--------------------------------------------------------------------

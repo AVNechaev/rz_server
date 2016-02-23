@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_pattern/3]).
+-export([start_link/0, load_pattern/3, check_patterns/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -40,6 +40,10 @@ init([]) ->
 %%--------------------------------------------------------------------
 -spec load_pattern(ThisPid :: pid(), PatDesc :: #pattern{}, PatFun :: pattern_fun()) -> ok.
 load_pattern(ThisPid, PatDesc, PatFun) -> gen_server:call(ThisPid, {load_pattern, PatDesc, PatFun}).
+
+%%--------------------------------------------------------------------
+-spec check_patterns(ThisPid :: pid(), Instr :: instr_name()) -> ok.
+check_patterns(ThisPid, Instr) -> gen_server:cast(ThisPid, {check_patterns, Instr}).
 
 %%--------------------------------------------------------------------
 handle_call(_Request, _From, _State) -> exit(handle_call_unsupported).
