@@ -8,7 +8,8 @@
                   stdlib,
                   lager,
                   erlmc,
-                  emysql
+                  emysql,
+                  parsetools
                  ]},
   {mod, { rz_server_app, []}},
   {env, []}

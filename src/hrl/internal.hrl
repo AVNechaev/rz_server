@@ -23,4 +23,5 @@
   md5 :: binary()
 }).
 
+-type pattern_fun() :: fun((Instr :: instr_name()) -> ok).
 -endif.
