@@ -87,6 +87,7 @@ compile_pattern(PatternText) ->
 %%--------------------------------------------------------------------
 -spec transform_pattern(tuple()) -> pattern_fun().
 transform_pattern({{two_op_logic, _, Operator}, LeftOperand, RightOperand}) ->
+  lager:info("Pattern operator ~p", [Operator]),
   LeftFun = transform_pattern(LeftOperand),
   RightFun = transform_pattern(RightOperand),
   case Operator of
@@ -95,6 +96,7 @@ transform_pattern({{two_op_logic, _, Operator}, LeftOperand, RightOperand}) ->
   end;
 %%---
 transform_pattern({{comparator, _, Operator}, LeftOperand, RightOperand}) ->
+  lager:info("Pattern operator \"~s\"", [Operator]),
   LeftFun = transform_pattern(LeftOperand),
   RightFun = transform_pattern(RightOperand),
   case Operator of
@@ -105,11 +107,14 @@ transform_pattern({{comparator, _, Operator}, LeftOperand, RightOperand}) ->
   end;
 %%---
 transform_pattern({{two_op_arith, _, op_rem}, LeftOperand, RightOperand}) ->
+  lager:info("Pattern operator REM"),
   LeftFun = transform_pattern(LeftOperand),
   RightFun = transform_pattern(RightOperand),
   fun(Instr) -> LeftFun(Instr) rem RightFun(Instr) end;
 %%---
-transform_pattern({constant, _, Value}) -> fun(_) -> Value end;
+transform_pattern({constant, _, Value}) ->
+  lager:info("Pattern operand CONST=~p", [Value]),
+  fun(_) -> Value end;
 %%---
 transform_pattern({instr, Line, Instr}) when is_list(Instr) -> transform_pattern({instr, Line, list_to_binary(Instr)});
 transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
@@ -120,9 +125,12 @@ transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
   HistStorageName = online_history_worker:storage_name(FrameName),
   Length = proplists:get_value(history_depth, proplists:get_value(FrameName, iqfeed_util:get_env(rz_server, frames))),
   GetCandleFun = case Val of
-                   <<"1">> -> fun(Instr) -> timeframe_worker:get_current_candle(CurStorageName, Instr) end;
+                   <<"1">> ->
+                     lager:info("Pattern operand get_current_candle(~p, Instr)", [CurStorageName]),
+                     fun(Instr) -> timeframe_worker:get_current_candle(CurStorageName, Instr) end;
                    _ ->
                      OffInt = binary_to_integer(Offset) - 2,
+                   lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
                      fun(Instr) ->
                        online_history_worker:get_candle(HistStorageName, Instr, Length, OffInt)
                      end
