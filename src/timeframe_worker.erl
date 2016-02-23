@@ -35,7 +35,8 @@
   duration :: pos_integer(), %длительность свечки
   name :: atom(),
   name_bin :: binary(),
-  history_name :: atom()
+  history_name :: atom(),
+  reinit_timeout :: non_neg_integer()
 }).
 
 -type frame_params() :: list().
@@ -81,7 +82,8 @@ init([Name, Params]) ->
       duration = proplists:get_value(duration, Params),
       name = Name,
       name_bin = atom_to_binary(Name, latin1),
-      history_name = online_history_worker:reg_name(Name)
+      history_name = online_history_worker:reg_name(Name),
+      reinit_timeout = proplists:get_value(reinit_timeout, Params)
     }}.
 
 %%--------------------------------------------------------------------
@@ -139,7 +141,7 @@ update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = B
   end.
 
 %%--------------------------------------------------------------------
-reinit_state(TickTime, State = #state{duration = Duration, trading_start = TradingStart}) ->
+reinit_state(TickTime, State = #state{duration = Duration, trading_start = TradingStart, reinit_timeout = RenitTO}) ->
   case State#state.empty of
     false -> flush_candles(State);
     true -> ok
@@ -156,9 +158,9 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
   % если на момент срабатывания таймера есть еще тики в очереди, то надо сначала
   % обработать их; иначе при флуде тиков происходит повторная инициализация свечки
   % как вариант, можно при достаточной пропускной способности поставить
-  % в reinit_timer (duration + 1), думая, что за секунду разгребутся остатки
+  % в reinit_timer (duration + ReinitTimeout), думая, что за N секунд разгребутся остатки
   % тиков предыдущей секунды
-  TRef = erlang:start_timer((Duration + 1) * 1000, self(), reinit),
+  TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
   lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
   DT = util:datetime_to_mysql(calendar:gregorian_seconds_to_datetime(Start)),
   State#state{candles_start = Start, candles_start_bin = DT, empty = true, current_tref = TRef}.
