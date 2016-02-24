@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_pattern/1, compile_pattern/1, check_patterns/1]).
+-export([start_link/0, load_pattern/1, compile_pattern/1, check_patterns/1, delete_pattern/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -43,6 +43,10 @@ start_link() -> gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 load_pattern(Pat) -> gen_server:call(?SERVER, {load_pattern, Pat}).
 
 %%--------------------------------------------------------------------
+-spec delete_pattern(pattern_index()) -> ok.
+delete_pattern(PatId) -> gen_server:call(?SERVER, {delete_pattern, PatId}).
+
+%%--------------------------------------------------------------------
 -spec check_patterns(InstrName :: instr_name()) -> ok.
 check_patterns(Instr) -> gen_server:cast(?SERVER, {check_patterns, Instr}).
 
@@ -66,6 +70,10 @@ handle_call({load_pattern, Pat}, _From, State) ->
     end
   end,
   pat_exec_worker:load_pattern(elect(State), Pat, AnchoredFun),
+  {reply, ok, State};
+%%---
+handle_call({delete_pattern, PatId}, _From, State) ->
+  [pat_exec_worker:delete_pattern(Pid, PatId) || Pid <- State#state.workers],
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------

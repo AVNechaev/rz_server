@@ -62,7 +62,7 @@ get_candle(StorageName, Instr, Length, Depth) ->
 
 %%--------------------------------------------------------------------
 -spec set_instrs(ThisName :: atom(), Instrs :: [instr_name()]) -> ok.
-set_instrs(ThisName, Instrs) -> gen_server:call(ThisName, {set_instrs, Instrs}).
+set_instrs(ThisName, Instrs) -> gen_server:call   (ThisName, {set_instrs, Instrs}).
 
 %%%===================================================================
 %%% gen_server callbacks
