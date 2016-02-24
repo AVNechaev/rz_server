@@ -68,6 +68,10 @@ init([]) ->
     ]},
     permanent, brutal_kill, worker, [candles_cached_store]},
 
+  PatternsExecutor = {patterns_executor,
+    {patterns_executor, start_link, []},
+    permanent, brutal_kill, worker, [patterns_executor]},
+
   IQFeed = {iqfeed,
     {iq_sup, start_link, [TickFun]},
     permanent, infinity, supervisor, [iq_sup]},
@@ -80,6 +84,7 @@ init([]) ->
         Hist,
         Frames,
         Cache,
+        PatternsExecutor,
         IQFeed
       ])}}.
 
