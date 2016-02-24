@@ -99,8 +99,8 @@ transform_pattern({{two_op_logic, _, Operator}, LeftOperand, RightOperand}) ->
   LeftFun = transform_pattern(LeftOperand),
   RightFun = transform_pattern(RightOperand),
   case Operator of
-    op_and -> fun(Instr) -> LeftFun(Instr) and RightFun(Instr) end;
-    op_or -> fun(Instr) -> LeftFun(Instr) or RightFun(Instr) end
+    op_and -> fun(Instr) -> LeftFun(Instr) andalso RightFun(Instr) end;
+    op_or -> fun(Instr) -> LeftFun(Instr) orelse RightFun(Instr) end
   end;
 %%---
 transform_pattern({{comparator, _, Operator}, LeftOperand, RightOperand}) ->
