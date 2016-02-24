@@ -144,10 +144,10 @@ transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
   CurStorageName = timeframe_worker:storage_name(FrameName),
   HistStorageName = online_history_worker:storage_name(FrameName),
   Length = proplists:get_value(history_depth, proplists:get_value(FrameName, iqfeed_util:get_env(rz_server, frames))),
-  GetCandleFun = case Val of
+  GetCandleFun = case Offset of
                    <<"1">> ->
                      lager:info("Pattern operand get_current_candle(~p, Instr)", [CurStorageName]),
-                     fun(Instr) -> timeframe_worker:get_current_candle(CurStorageName, Instr) end;
+                     fun(Instr) -> timeframe_worker:get_current_candle(Instr, CurStorageName) end;
                    _ ->
                      OffInt = binary_to_integer(Offset) - 2,
                    lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
