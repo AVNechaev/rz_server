@@ -149,6 +149,8 @@ transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
               <<"HIGH">>   -> fun(#candle{high = V}) -> V end;
               <<"LOW">>    -> fun(#candle{low = V}) -> V end;
               <<"PRICE">>  -> fun(#candle{close = V}) -> V end;
+              <<"BID">>    -> fun(#candle{bid = V}) -> V end;
+              <<"ASK">>    -> fun(#candle{ask = V}) -> V end;
               <<"VOLUME">> -> fun(#candle{vol = V}) -> V end
             end,
   fun(Instr) ->
