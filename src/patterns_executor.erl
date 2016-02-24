@@ -122,11 +122,15 @@ transform_pattern({{comparator, _, Operator}, LeftOperand, RightOperand}) ->
     "<=" -> fun(Instr) -> LeftFun(Instr) =< RightFun(Instr) end
   end;
 %%---
-transform_pattern({{two_op_arith, _, op_rem}, LeftOperand, RightOperand}) ->
-  lager:info("Pattern operator REM"),
+transform_pattern({{two_op_arith, _, Operator}, LeftOperand, RightOperand}) ->
+  lager:info("Pattern operator ~p", [Operator]),
   LeftFun = transform_pattern(LeftOperand),
   RightFun = transform_pattern(RightOperand),
-  fun(Instr) -> LeftFun(Instr) rem RightFun(Instr) end;
+  case Operator of
+    op_rem   -> fun(Instr) -> LeftFun(Instr) rem RightFun(Instr) end;
+    op_plus  -> fun(Instr) -> LeftFun(Instr) + RightFun(Instr) end;
+    op_minus -> fun(Instr) -> LeftFun(Instr) - RightFun(Instr) end
+  end;
 %%---
 transform_pattern({constant, _, Value}) ->
   lager:info("Pattern operand CONST=~p", [Value]),

@@ -22,7 +22,10 @@ or|OR                                       : {token, {two_op_logic, TokenLine, 
 -?{D}+                                      : {token, {constant, TokenLine, list_to_float(TokenChars ++ ".0")}}.
 -?{D}+\.{D}+                                : {token, {constant, TokenLine, list_to_float(TokenChars)}}.
 
-\%                                           : {token, {two_op_arith, TokenLine, op_rem}}.
+\%                                          : {token, {two_op_arith, TokenLine, op_rem}}.
+\+                                          : {token, {two_op_arith, TokenLine, op_plus}}.
+-                                           : {token, {two_op_arith, TokenLine, op_minus}}.
+
 
 {WS}+                                       : skip_token.
 
