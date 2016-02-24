@@ -46,7 +46,8 @@ start_link() -> gen_server:start_link(?MODULE, [], []).
 %%%===================================================================
 init([]) ->
   Tid = ets:new(?MODULE, [private, set, {keypos, #pattern_data.id}]),
-  {ok, #state{tid = Tid}}.
+  RefireTimeout = proplists:get_value(refire_timeout, iqfeed_util:get_env(rz_server, patterns_executor)),
+  {ok, #state{tid = Tid, refire_timeout = RefireTimeout}}.
 
 %%--------------------------------------------------------------------
 -spec load_pattern(ThisPid :: pid(), PatDesc :: #pattern{}, PatFun :: pattern_fun()) -> ok.
