@@ -12,7 +12,7 @@
 -author("anechaev").
 
 %% API
--export([create_storage/0, create_buffer/3, push/2, get/2, create_storage/1, desired_counter_name/1, create_buffer/4, push/5]).
+-export([create_storage/0, create_buffer/3, push/2, get/2, create_storage/1, desired_counter_name/1, create_buffer/4, push/5, get/5]).
 -type storage_t() :: ets:tid().
 -type buffer_name() :: binary() | list() | atom().
 
