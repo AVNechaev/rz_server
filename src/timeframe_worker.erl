@@ -151,8 +151,17 @@ update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = B
              LP < C#candle.low -> [{#candle.low, LP} | U2];
              true -> U2
            end,
-%%       TODO: заменить предыдущую свечу на текущую...
-      candle_to_memcached(C, State#state.name_bin, State#state.candles_start_bin),
+      NewCandle = #candle{
+        name = C#candle.name,
+        open = C#candle.open,
+        close = LP,
+        vol = C#candle.vol + LV,
+        bid = Bid,
+        ask = Ask,
+        high = proplists:get_value(#candle.high, U3, C#candle.high),
+        low = proplists:get_value(#candle.low, U3, C#candle.low)
+      },
+      candle_to_memcached(NewCandle, State#state.name_bin, State#state.candles_start_bin),
       ets:update_element(Tid, C#candle.name, U3)
   end.
 

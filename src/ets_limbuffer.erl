@@ -35,7 +35,7 @@ create_storage() -> ets:new(limbuffer, [set, protected, {read_concurrency, true}
 -spec create_storage(StorageName :: atom()) -> storage_t().
 create_storage(StorageName) -> ets:new(StorageName, [set, protected, {read_concurrency, true}, named_table]).
 
-%%%-------------------------------------------------------------------
+%%%--------------------candles_start-----------------------------------------------
 -spec desired_counter_name(Name :: buffer_name()) -> atom().
 desired_counter_name(Name) -> list_to_atom(any_to_list(Name) ++ "_counter").
 
