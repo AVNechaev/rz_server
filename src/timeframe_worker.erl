@@ -28,8 +28,10 @@
 -record(state, {
   empty :: boolean(),
   trading_start :: calendar:time(),
-  candles_start :: integer(),
-  candles_start_bin :: binary(),
+  candles_start :: pos_integer() | undefined,
+  candles_start_bin :: binary() | undefined,
+  candles_last_flushed :: pos_integer() | undefined,
+  expired_ticks = 0 :: non_neg_integer(), %% количество устаревших тиков (пришедших по времени после флуша соотв свечки)
   tid :: ets:tid(),
   current_tref = undefined :: undefined | reference(),
   duration :: pos_integer(), %длительность свечки
@@ -40,6 +42,9 @@
 }).
 
 -type frame_params() :: list().
+
+-define(MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG, 0).
+-define(LOG_ALL_EXPIRED_TICKS, 0).
 
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================
@@ -87,19 +92,29 @@ init([Name, Params]) ->
     }}.
 
 %%--------------------------------------------------------------------
-handle_cast({add_tick, Tick}, State = #state{empty = true}) ->
-  NewState = reinit_state(Tick#tick.time, State),
-  update_current_candle(Tick, NewState),
-  {noreply, NewState#state{empty = false}};
+handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed = LastFlushed}) ->
+  if
+    LastFlushed == undefined orelse Tick#tick.time >= LastFlushed ->
+      NewState = reinit_state(Tick#tick.time, State),
+      update_current_candle(Tick, NewState),
+      {noreply, NewState#state{empty = false}};
+    true ->
+      {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
+  end;
 %%---
-handle_cast({add_tick, Tick}, State) ->
-  NewState = if
-               (Tick#tick.time - State#state.candles_start) >= State#state.duration ->
-                 reinit_state(Tick#tick.time, State);
-               true -> State
-             end,
-  update_current_candle(Tick, NewState),
-  {noreply, NewState#state{empty = false}}.
+handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}) ->
+  if
+    LastFlushed == undefined orelse Tick#tick.time >= LastFlushed ->
+      NewState = if
+                   (Tick#tick.time - State#state.candles_start) >= State#state.duration ->
+                     reinit_state(Tick#tick.time, State);
+                   true -> State
+                 end,
+      update_current_candle(Tick, NewState),
+      {noreply, NewState};
+    true ->
+      {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
+  end.
 
 %%--------------------------------------------------------------------
 handle_info({timeout, _, reinit}, State = #state{empty = true}) -> {noreply, State};
@@ -109,7 +124,8 @@ handle_info({timeout, TRef, reinit}, State = #state{current_tref = OtherTRef}) w
 handle_info({timeout, _, reinit}, State) ->
   flush_candles(State),
   ets:delete_all_objects(State#state.tid),
-  {noreply, State#state{empty = true}}.
+  LastFlushed = State#state.candles_start + State#state.duration, %% по идее не должно быть UNDEFINED, т.к. таймер взводится в reinit, но на всякий случай
+  {noreply, log_expired_ticks(State#state{empty = true, candles_last_flushed = LastFlushed}, ?LOG_ALL_EXPIRED_TICKS)}.
 
 %%--------------------------------to_date------------------------------------
 handle_call(_Request, _From, _State) -> exit(handle_call_unsupported).
@@ -163,7 +179,7 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
   TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
   lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
   DT = util:datetime_to_mysql(calendar:gregorian_seconds_to_datetime(Start)),
-  State#state{candles_start = Start, candles_start_bin = DT, empty = true, current_tref = TRef}.
+  State#state{candles_start = Start, candles_start_bin = DT, empty = true, current_tref = TRef, candles_last_flushed = Start}.
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
@@ -230,3 +246,9 @@ candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vo
   "}}"
   >>,
   erlmc:set(Key, Data).
+
+%%--------------------------------------------------------------------
+log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
+  lager:warning("Catch EXPIRED ticks: ~p", [T]),
+  State#state{expired_ticks = 0};
+log_expired_ticks(State, _) -> State.
