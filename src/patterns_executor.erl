@@ -137,6 +137,18 @@ transform_pattern({constant, _, Value}) ->
   fun(_) -> Value end;
 %%---
 transform_pattern({instr, Line, Instr}) when is_list(Instr) -> transform_pattern({instr, Line, list_to_binary(Instr)});
+transform_pattern({instr, Line, <<"Instr#Price">>}) ->
+  DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
+  transform_pattern({instr, Line, <<"Instr#", DefFrame/binary, ",1#PRICE">>});
+%%---
+transform_pattern({instr, Line, <<"Instr#Bid">>}) ->
+  DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
+  transform_pattern({instr, Line, <<"Instr#", DefFrame/binary, ",1#BID">>});
+%%---
+transform_pattern({instr, Line, <<"Instr#Ask">>}) ->
+  DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
+  transform_pattern({instr, Line, <<"Instr#", DefFrame/binary, ",1#ASK">>});
+%%---
 transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
   [FrameOff, Val] = binary:split(Data, <<"#">>),
   [Frame, Offset] = binary:split(FrameOff, <<",">>),
