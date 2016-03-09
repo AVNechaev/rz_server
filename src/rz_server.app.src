@@ -7,7 +7,6 @@
                   kernel,
                   stdlib,
                   lager,
-                  erlmc,
                   emysql,
                   parsetools
                  ]},
