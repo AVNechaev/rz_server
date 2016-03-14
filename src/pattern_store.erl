@@ -110,7 +110,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-pt_to_pattern(Idx, Text) when is_list(Text) -> pt_to_text(Idx, list_to_binary(Text));
+pt_to_pattern(Idx, Text) when is_list(Text) -> pt_to_pattern(Idx, list_to_binary(Text));
 pt_to_pattern(Idx, Text) when is_binary(Text) ->
   #pattern{
     idx = Idx,
