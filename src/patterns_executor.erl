@@ -95,6 +95,7 @@ elect(#state{workers = Workers}) -> lists:nth(random:uniform(length(Workers)), W
 
 %%--------------------------------------------------------------------
 compile_pattern(#pattern{text = PatternText}) -> compile_pattern(PatternText);
+compile_pattern(PT) when is_binary(PT) -> compile_pattern(binary_to_list(PT));
 compile_pattern(PatternText) ->
   {ok, Tokens, _} = patterns_lex:string(PatternText),
   {ok, ParsedPattern} = patterns_parser:parse(Tokens),

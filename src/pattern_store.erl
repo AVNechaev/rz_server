@@ -28,7 +28,7 @@
 -record(state, {}).
 
 -record(add_res, {id :: non_neg_integer()}).
--record(sel_res, {id :: non_neg_integer, text :: binary() | list()}).
+-record(sel_res, {id :: non_neg_integer, expr :: binary() | list()}).
 
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================
@@ -60,13 +60,12 @@ init([]) ->
 
 %%--------------------------------------------------------------------
 handle_call({add_pattern, PatternText}, _From, State) ->
-  [#add_res{id = Id}] = emysql:as_record(
-    emysql:execute(mysql_config_store, <<"insert into PATTERNS (expr) VALUES ('", PatternText/binary, "'; select LAST_INSERT_ID()">>),
-    add_res,
-    record_info(fields, add_res)
-  ),
+  [_, ResPacket] = emysql:execute(mysql_config_store, <<"insert into PATTERNS (expr) VALUES ('", PatternText/binary, "'); select LAST_INSERT_ID() as id">>),
+  [#add_res{id = Id}] = emysql:as_record(ResPacket, add_res, record_info(fields, add_res)),
   lager:info("STORE pattern: ~p AS ~p", [PatternText, Id]),
-  {reply, pt_to_pattern(Id, PatternText), State};
+  Pattern = pt_to_pattern(Id, PatternText),
+  patterns_executor:load_pattern(Pattern),
+  {reply, Pattern, State};
 %%---
 handle_call(delete_all_patterns, _From, State) ->
   [
@@ -91,7 +90,7 @@ handle_call({remove_pattern, Id}, _From, State) ->
 handle_call(init_patterns, _From, State) ->
   [
     patterns_executor:load_pattern(pt_to_pattern(Id, Text))
-    || #sel_res{id = Id, text = Text} <-
+    || #sel_res{id = Id, expr = Text} <-
     emysql:as_record(
       emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
       sel_res,

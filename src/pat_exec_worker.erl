@@ -100,4 +100,5 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 on_fired(PatIdx, Instr, _State) ->
   lager:info("PATTERN ~p fired for ~p at ~p", [PatIdx, Instr, erlang:now()]),
+  fires_cached_store:store(PatIdx, Instr),
   ok.
