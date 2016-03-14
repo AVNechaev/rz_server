@@ -79,9 +79,9 @@ init([]) ->
     {patterns_executor, start_link, []},
     permanent, brutal_kill, worker, [patterns_executor]},
 
-  PatternsStore = {patterns_store,
-    {patterns_store, start_link, []},
-    permanent, brutal_kill, worker, [patterns_store]},
+  PatternsStore = {pattern_store,
+    {pattern_store, start_link, []},
+    permanent, brutal_kill, worker, [pattern_store]},
 
   IQFeed = {iqfeed,
     {iq_sup, start_link, [TickFun]},
