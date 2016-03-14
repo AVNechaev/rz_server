@@ -68,9 +68,20 @@ init([]) ->
     ]},
     permanent, brutal_kill, worker, [candles_cached_store]},
 
+  FiresCache = {fires_cache,
+    {fires_cached_store, start_link, [
+      iqfeed_util:get_env(rz_server, fires_cache_size),
+      iqfeed_util:get_env(rz_server, fires_cache_timeout)
+    ]},
+    permanent, brutal_kill, worker, [candles_cached_store]},
+
   PatternsExecutor = {patterns_executor,
     {patterns_executor, start_link, []},
     permanent, brutal_kill, worker, [patterns_executor]},
+
+  PatternsStore = {patterns_store,
+    {patterns_store, start_link, []},
+    permanent, brutal_kill, worker, [patterns_store]},
 
   IQFeed = {iqfeed,
     {iq_sup, start_link, [TickFun]},
@@ -84,7 +95,9 @@ init([]) ->
         Hist,
         Frames,
         Cache,
+        FiresCache,
         PatternsExecutor,
+        PatternsStore,
         IQFeed
       ])}}.
 
