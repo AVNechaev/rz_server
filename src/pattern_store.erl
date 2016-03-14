@@ -27,7 +27,6 @@
 
 -record(state, {}).
 
--define(ADD_STMT, list_to_atom(atom_to_list(?MODULE) ++ "_add_stmt")).
 -record(add_res, {id :: non_neg_integer()}).
 -record(sel_res, {id :: non_neg_integer, text :: binary() | list()}).
 
@@ -57,13 +56,12 @@ remove_pattern(Id) -> gen_server:call(?SERVER, {remove_pattern, Id}).
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
-  emysql:prepare(?ADD_STMT, <<"insert into PATTERNS (expr) VALUES (?); select LAST_INSERT_ID()">>),
   {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 handle_call({add_pattern, PatternText}, _From, State) ->
   [#add_res{id = Id}] = emysql:as_record(
-    emysql:execute(mysql_config_store, ?ADD_STMT, [PatternText]),
+    emysql:execute(mysql_config_store, <<"insert into PATTERNS (expr) VALUES ('", PatternText/binary, "'; select LAST_INSERT_ID()">>),
     add_res,
     record_info(fields, add_res)
   ),
