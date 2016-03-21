@@ -43,7 +43,7 @@
 
 -type frame_params() :: list().
 
--define(MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG, 0).
+-define(MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG, 1000).
 -define(LOG_ALL_EXPIRED_TICKS, 0).
 
 -compile([{parse_transform, lager_transform}]).

@@ -163,7 +163,7 @@ transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
                      fun(Instr) -> timeframe_worker:get_current_candle(Instr, CurStorageName) end;
                    _ ->
                      OffInt = binary_to_integer(Offset) - 2,
-                   lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
+                     lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
                      fun(Instr) ->
                        online_history_worker:get_candle(HistStorageName, Instr, Length, OffInt)
                      end
