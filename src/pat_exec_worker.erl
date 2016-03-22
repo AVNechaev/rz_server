@@ -92,6 +92,7 @@ handle_cast({check_patterns, Instr}, State = #state{tid = Tid, refire_timeout = 
             false ->
               ok
           end;
+        [#fires_data{}] -> ok;
         [] ->
           case PatFun(Instr) of
             true ->
