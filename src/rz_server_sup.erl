@@ -87,6 +87,20 @@ init([]) ->
     {iq_sup, start_link, [TickFun]},
     permanent, infinity, supervisor, [iq_sup]},
 
+  Web = {webmachine,
+    {webmachine_mochiweb, start, [
+      {ip, "127.0.0.1"},
+      {port, iqfeed_util:get_env(rz_server, http_port)},
+      {backlog, 1000},
+      {dispatch, [
+        {["nyse", "instrs"], web_instruments, []}, %% POST, PUT, GET
+        {["nyse", "instrs", instr], web_single_instrument, []}, %% DELETE
+        {["patterns"], web_patterns, []}, %% POST, GET
+        {["patterns", pattern_id], web_single_pattern, []} %% DELETE
+      ]}
+    ]}
+  },
+
   {
     ok,
     {{one_for_one, 5, 10},
@@ -98,6 +112,7 @@ init([]) ->
         FiresCache,
         PatternsExecutor,
         PatternsStore,
-        IQFeed
+        IQFeed,
+        Web
       ])}}.
 
