@@ -99,8 +99,7 @@ init([]) ->
         {["patterns", pattern_id], web_single_pattern, []} %% DELETE
       ]}
     ]]},
-    permanent, brutal_kill, worker, dynamic
-  },
+    permanent, brutal_kill, worker, dynamic},
 
   {
     ok,
