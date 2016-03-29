@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, add_pattern/1, delete_all_patterns/0, remove_pattern/1]).
+-export([start_link/0, add_pattern/1, delete_all_patterns/0, remove_pattern/1, get_patterns_indexes/0]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -51,6 +51,10 @@ delete_all_patterns() -> gen_server:call(?SERVER, delete_all_patterns).
 %%--------------------------------------------------------------------
 -spec remove_pattern(Id :: pattern_index()) -> ok | {error, not_found}.
 remove_pattern(Id) -> gen_server:call(?SERVER, {remove_pattern, Id}).
+
+%%--------------------------------------------------------------------
+-spec get_patterns_indexes() -> {ok, [pattern_index()]}.
+get_patterns_indexes() -> gen_server:call(?SERVER, get_patterns_indexes).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -102,7 +106,18 @@ handle_call(init_patterns, _From, State) ->
       sel_res,
       record_info(fields, sel_res))
   ],
-  {reply, ok, State}.
+  {reply, ok, State};
+%%---
+handle_call(get_patterns_indexes, _From, State) ->
+  Ret = [
+    Id
+    || #sel_res{id = Id} <-
+    emysql:as_record(
+      emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
+      sel_res,
+      record_info(fields, sel_res))
+  ],
+  {reply, {ok, Ret}, State}.
 
 %%--------------------------------------------------------------------
 handle_cast(_Request, _State) -> exit(handle_cast_unsupported).
