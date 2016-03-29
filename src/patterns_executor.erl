@@ -39,7 +39,7 @@
 start_link() -> gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%--------------------------------------------------------------------
--spec load_pattern(Pat :: #pattern{}) -> ok.
+-spec load_pattern(Pat :: #pattern{}) -> ok | {error, Reason :: term()}.
 load_pattern(Pat) -> gen_server:call(?SERVER, {load_pattern, Pat}).
 
 %%--------------------------------------------------------------------
@@ -57,20 +57,25 @@ init([]) ->
   Cfg = iqfeed_util:get_env(rz_server, patterns_executor),
   Workers = proplists:get_value(workers, Cfg),
   PIDs = [begin {ok, P} = pat_exec_worker:start_link(), P end || _ <- lists:seq(1, Workers)],
-  {ok, #state{workers =  PIDs}}.
+  {ok, #state{workers = PIDs}}.
 
 %%--------------------------------------------------------------------
 handle_call({load_pattern, Pat}, _From, State) ->
-  {ok, Fun} = compile_pattern(Pat),
-  AnchoredFun = fun(Instr) ->
-    try
-      Fun(Instr)
-    catch
-      ?NO_DATA -> false
-    end
-  end,
-  pat_exec_worker:load_pattern(elect(State), Pat, AnchoredFun),
-  {reply, ok, State};
+  try
+    {ok, Fun} = compile_pattern(Pat),
+    AnchoredFun = fun(Instr) ->
+      try
+        Fun(Instr)
+      catch
+        ?NO_DATA -> false
+      end
+    end,
+    pat_exec_worker:load_pattern(elect(State), Pat, AnchoredFun),
+    {reply, ok, State}
+  catch
+    M:E ->
+      {reply, {error, {M, E, erlang:get_stacktrace()}}, State}
+  end;
 %%---
 handle_call({delete_pattern, PatId}, _From, State) ->
   [pat_exec_worker:delete_pattern(Pid, PatId) || Pid <- State#state.workers],
@@ -128,8 +133,8 @@ transform_pattern({{two_op_arith, _, Operator}, LeftOperand, RightOperand}) ->
   LeftFun = transform_pattern(LeftOperand),
   RightFun = transform_pattern(RightOperand),
   case Operator of
-    op_rem   -> fun(Instr) -> LeftFun(Instr) rem RightFun(Instr) end;
-    op_plus  -> fun(Instr) -> LeftFun(Instr) + RightFun(Instr) end;
+    op_rem -> fun(Instr) -> LeftFun(Instr) rem RightFun(Instr) end;
+    op_plus -> fun(Instr) -> LeftFun(Instr) + RightFun(Instr) end;
     op_minus -> fun(Instr) -> LeftFun(Instr) - RightFun(Instr) end
   end;
 %%---
@@ -169,18 +174,18 @@ transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
                      end
                  end,
   ExtrFun = case Val of
-              <<"OPEN">>   -> fun(#candle{open = V}) -> V end;
-              <<"CLOSE">>  -> fun(#candle{close = V}) -> V end;
-              <<"HIGH">>   -> fun(#candle{high = V}) -> V end;
-              <<"LOW">>    -> fun(#candle{low = V}) -> V end;
-              <<"PRICE">>  -> fun(#candle{close = V}) -> V end;
-              <<"BID">>    -> fun(#candle{bid = V}) -> V end;
-              <<"ASK">>    -> fun(#candle{ask = V}) -> V end;
+              <<"OPEN">> -> fun(#candle{open = V}) -> V end;
+              <<"CLOSE">> -> fun(#candle{close = V}) -> V end;
+              <<"HIGH">> -> fun(#candle{high = V}) -> V end;
+              <<"LOW">> -> fun(#candle{low = V}) -> V end;
+              <<"PRICE">> -> fun(#candle{close = V}) -> V end;
+              <<"BID">> -> fun(#candle{bid = V}) -> V end;
+              <<"ASK">> -> fun(#candle{ask = V}) -> V end;
               <<"VOLUME">> -> fun(#candle{vol = V}) -> V end
             end,
   fun(Instr) ->
     case GetCandleFun(Instr) of
       {ok, C} -> ExtrFun(C);
-      {error, not_found} -> throw (?NO_DATA)
+      {error, not_found} -> throw(?NO_DATA)
     end
   end.

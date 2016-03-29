@@ -41,7 +41,7 @@ start_link() ->
   {ok, Ret}.
 
 %%--------------------------------------------------------------------
--spec add_pattern(Pattern :: pattern_text()) -> #pattern{}.
+-spec add_pattern(Pattern :: pattern_text()) -> {ok, #pattern{}} | {error, Reason :: term()}.
 add_pattern(Pattern) -> gen_server:call(?SERVER, {add_pattern, Pattern}).
 
 %%--------------------------------------------------------------------
@@ -64,8 +64,14 @@ handle_call({add_pattern, PatternText}, _From, State) ->
   [#add_res{id = Id}] = emysql:as_record(ResPacket, add_res, record_info(fields, add_res)),
   lager:info("STORE pattern: ~p AS ~p", [PatternText, Id]),
   Pattern = pt_to_pattern(Id, PatternText),
-  patterns_executor:load_pattern(Pattern),
-  {reply, Pattern, State};
+  case patterns_executor:load_pattern(Pattern) of
+    ok ->
+      {reply, {ok, Pattern}, State};
+    {error, What} ->
+      lager:warning("An error occured when adding a pattern: ~p", [What]),
+      {error, What}
+  end;
+
 %%---
 handle_call(delete_all_patterns, _From, State) ->
   [
