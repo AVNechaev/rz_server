@@ -9,6 +9,7 @@
                   lager,
                   emysql,
                   erlmc,
+                  webmachine,
                   parsetools
                  ]},
   {mod, { rz_server_app, []}},

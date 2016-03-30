@@ -88,7 +88,7 @@ init([]) ->
     permanent, infinity, supervisor, [iq_sup]},
 
   Web = {webmachine,
-    {webmachine_mochiweb, start, [
+    {webmachine_mochiweb, start, [[
       {ip, "127.0.0.1"},
       {port, iqfeed_util:get_env(rz_server, http_port)},
       {backlog, 1000},
@@ -98,8 +98,8 @@ init([]) ->
         {["patterns"], web_patterns, []}, %% POST, GET
         {["patterns", pattern_id], web_single_pattern, []} %% DELETE
       ]}
-    ]}
-  },
+    ]]},
+    permanent, brutal_kill, worker, dynamic},
 
   {
     ok,
