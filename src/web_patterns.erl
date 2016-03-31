@@ -38,9 +38,10 @@ instr_list(ReqData, Context) ->
 %%--------------------------------------------------------------------
 process_post(ReqData, Context) ->
   try
-    {struct, [{text, PatText}]} = mochijson2:decode(wrq:req_body(ReqData)),
+    {struct, [{<<"text">>, PatText}]} = mochijson2:decode(wrq:req_body(ReqData)),
     case pattern_store:add_pattern(PatText) of
       {ok, #pattern{idx = Id}} ->
+        lager:info("Created pattern ~p as ~p", [PatText, Id]),
         {{halt, 201}, wrq:set_resp_body(["{""id"":",integer_to_binary(Id), "}"], ReqData), Context};
       {error, Reason} ->
         lager:warning("HTTP handler warning:~p", [Reason]),

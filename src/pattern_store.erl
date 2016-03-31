@@ -92,10 +92,17 @@ handle_call(delete_all_patterns, _From, State) ->
 %%---
 handle_call({remove_pattern, Id}, _From, State) ->
   IdText = integer_to_binary(Id),
-  emysql:execute(mysql_config_store, <<"delete from PATTERNS WHERE id=", IdText/binary>>),
-  lager:info("Delete pattern #~p", [Id]),
-%%   TODO: impl {error, not_found} case
-  {reply, ok, State};
+  case emysql:as_record(
+    emysql:execute(mysql_config_store, <<"select id from PATTERNS WHERE id=", IdText/binary>>),
+    add_res,
+    record_info(fields, add_res)) of
+    [] -> {reply, {error, not_found}, State};
+    _ ->
+      patterns_executor:delete_pattern(Id),
+      emysql:execute(mysql_config_store, <<"delete from PATTERNS WHERE id=", IdText/binary>>),
+      lager:info("Delete pattern #~p", [Id]),
+      {reply, ok, State}
+  end;
 %%---
 handle_call(init_patterns, _From, State) ->
   [
