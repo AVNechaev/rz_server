@@ -5,6 +5,8 @@
 
 -record(candle, {
   name :: instr_name(),
+  start :: pos_integer(),
+  start_mysql :: binary(),
   open = 0 :: float(),
   close = 0 :: float(),
   high = 0 :: float(),
