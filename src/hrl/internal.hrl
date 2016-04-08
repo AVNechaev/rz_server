@@ -24,4 +24,6 @@
 }).
 
 -type pattern_fun() :: fun((Instr :: instr_name()) -> ok).
+-type stock_open_fun() :: fun(() -> non_neg_integer()).
+
 -endif.

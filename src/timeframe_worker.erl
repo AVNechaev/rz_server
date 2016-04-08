@@ -26,8 +26,8 @@
 
 -include("internal.hrl").
 -record(state, {
+  stock_open_f :: stock_open_fun(),
   empty :: boolean(),
-  trading_start :: calendar:time(),
   candles_start :: pos_integer() | undefined,
   candles_start_bin :: binary() | undefined,
   candles_last_flushed :: pos_integer() | undefined,
@@ -81,9 +81,9 @@ init([Name, Params]) ->
   Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
   {ok,
     #state{
+      stock_open_f = proplists:get_value(stock_open_fun, Params),
       empty = true,
       tid = Tid,
-      trading_start = iqfeed_util:get_env(rz_server, trading_start),
       duration = proplists:get_value(duration, Params),
       name = Name,
       name_bin = atom_to_binary(Name, latin1),
@@ -166,18 +166,16 @@ update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = B
   end.
 
 %%--------------------------------------------------------------------
-reinit_state(TickTime, State = #state{duration = Duration, trading_start = TradingStart, reinit_timeout = RenitTO}) ->
+reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = RenitTO}) ->
   case State#state.empty of
     false -> flush_candles(State);
     true -> ok
   end,
   ets:delete_all_objects(State#state.tid),
-  {D, _} = calendar:gregorian_seconds_to_datetime(TickTime),
-
   ExpectedStart = (TickTime div Duration) * Duration,
-  TradingStartSeconds = calendar:datetime_to_gregorian_seconds({D, TradingStart}),
+  StockOpen = (State#state.stock_open_f)(),
   Start = if
-            ExpectedStart < TradingStartSeconds -> TradingStartSeconds;
+            ExpectedStart < StockOpen -> StockOpen;
             true -> ExpectedStart
           end,
   % если на момент срабатывания таймера есть еще тики в очереди, то надо сначала

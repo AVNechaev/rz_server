@@ -52,10 +52,11 @@ init([]) ->
     } || {Name, Params} <- iqfeed_util:get_env(rz_server, frames)
   ],
 
+  StockOpenF = fun() -> iql1_conn:get_stock_open_utc() end,
   Frames = [
     {
       timeframe_worker:reg_name(Name),
-      {timeframe_worker, start_link, [Name, Params]},
+      {timeframe_worker, start_link, [Name, [{stock_open_fun, StockOpenF} | Params]]},
       permanent, brutal_kill, worker, [timeframe_worker]
     } || {Name, Params} <- iqfeed_util:get_env(rz_server, frames)
   ],
