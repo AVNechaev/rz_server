@@ -65,7 +65,7 @@ handle_cast({store, PatId, Instr}, State) ->
   Item = #cache_item{
     pat_id = PatId,
     instr = Instr,
-    ts = util:datetime_to_mysql(erlang:localtime())
+    ts = util:datetime_to_mysql(erlang:universaltime())
   },
   NewCached = [Item | State#state.cache],
   if
