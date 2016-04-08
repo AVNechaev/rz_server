@@ -185,8 +185,8 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
   % тиков предыдущей секунды
   TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
   lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
-  DT = util:datetime_to_mysql(calendar:gregorian_seconds_to_datetime(Start)),
-  State#state{candles_start = Start, candles_start_bin = DT, empty = true, current_tref = TRef, candles_last_flushed = Start}.
+  StartBin = integer_to_binary(Start),
+  State#state{candles_start = Start, candles_start_bin = StartBin, empty = true, current_tref = TRef, candles_last_flushed = Start}.
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
