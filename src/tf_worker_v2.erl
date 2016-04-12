@@ -29,13 +29,14 @@
 
 -record(candle_params, {
   name :: instr_name(),
-%%   start :: pos_integer() | undefined, %% время начала свечи
+  active :: boolean(),
+  start :: pos_integer() | undefined, %% время начала свечи
   tref = undefined :: reference() | undefined, %% таймер, срабатывающий по протуханию свечи
   last_flushed :: pos_integer() | undefined %% время последнего флуша свечи
 }).
 
 -record(state, {
-  trading_start :: calendar:time(),
+  stock_open_f :: stock_open_fun(),
   data_tid :: ets:tid(),
   params_tid :: ets:tid(),
   expired_ticks = 0 :: non_neg_integer(), %% количество устаревших тиков (пришедших по времени после флуша соотв свечки)
@@ -84,9 +85,9 @@ init([Name, Params]) ->
   CandleParamsTid = ets:new(local, [private, set, {keypos, #candle_params.name}]),
   {ok,
     #state{
+      stock_open_f = proplists:get_value(stock_open_fun, Params),
       data_tid = CandleDataTid,
       params_tid = CandleParamsTid,
-      trading_start = iqfeed_util:get_env(rz_server, trading_start),
       duration = proplists:get_value(duration, Params),
       name = Name,
       name_bin = atom_to_binary(Name, latin1),
@@ -115,37 +116,90 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
 
 %%--------------------------------------------------------------------
-is_tick_expired(#tick{name = Name, time = T}, #state{params_tid = Tid}) ->
-  case ets:lookup(Tid, Name) of
-    [] -> false;
+%% заодно инициализирует ets параметров свечи, если ее еще нет
+%% получается, что при update_candle параметры свечи _ВСЕГДА_ в ets.
+-spec is_tick_expired(T :: #tick{}, #state{}) -> boolean().
+is_tick_expired(#tick{name = Name, time = T}, #state{params_tid = PTid}) ->
+  case ets:lookup(PTid, Name) of
+    [] ->
+      NewCandleParams = #candle_params{
+        active = false,
+        last_flushed = undefined,
+        name = Name,
+        start = undefined,
+        tref = undefined
+      },
+      ets:insert_new(PTid, NewCandleParams),
+      false;
+    [#candle_params{last_flushed = undefined}] -> false;
     [#candle_params{last_flushed = LF}] when T >= LF -> false;
     _ -> true
   end.
 
 %%--------------------------------------------------------------------
-update_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask, time = Time}, State = #state{data_tid = DTid}) ->
+update_candle(
+    #tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask, time = Time},
+    State = #state{data_tid = DTid, params_tid = PTid, duration = Duration}) ->
 %%   если свеча есть:
 %%    если пора флушить, то: флушить, проинитить, сохранить
 %%    если не пора, то сохранить
 %%   если нет, то проинитить, сохранить
-  case ets:lookup(DTid, Name) of
-    [{}] -> ok;
-    [] ->
+  case ets:lookup(PTid, Name) of
+    [#candle_params{active = false}] ->
       CandleStart = calc_candle_start(Time, State),
+      NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, bid = Bid, ask = Ask, vol = LV},
+      candle_to_memcached(NewCandle, State),
+      ets:insert(DTid, State),
+      TRef = erlang:start_timer((Duration + State#state.reinit_timeout) * 1000, self(), {reinit, Name}),
+      ets:update_element(
+        PTid,
+        Name,
+        [
+          {#candle_params.start, CandleStart},
+          {#candle_params.active, true},
+          {#candle_params.tref, TRef}
+        ]),
+      ok;
+    [#candle_params{start = Start}] when (Time - Start) >= Duration ->
+      CandleStart = calc_candle_start(Time, State),
+      flush_candle(Name),
+      NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, bid = Bid, ask = Ask, vol = LV},
+      candle_to_memcached(NewCandle, State),
+      ets:insert(DTid, State),
+      TRef = erlang:start_timer((Duration + State#state.reinit_timeout) * 1000, self(), {reinit, Name}),
+      ets:update_element(
+        PTid,
+        Name,
+        [
+          {#candle_params.start, CandleStart},
+          {#candle_params.tref, TRef}
+        ]),
+      ok;
+    [#candle_params{}] ->
+      [C] = ets:lookup(DTid, Name),
+      U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}, {#candle.bid, Bid}, {#candle.ask, Ask}],
+      U2 = if
+             LP > C#candle.high -> [{#candle.high, LP} | U1];
+             true -> U1
+           end,
+      U3 = if
+             LP < C#candle.low -> [{#candle.low, LP} | U2];
+             true -> U2
+           end,
       NewCandle = #candle{
-        name = Name,
-        open = LP,
+        name = C#candle.name,
+        open = C#candle.open,
         close = LP,
-        high = LP,
-        low = LP,
-        vol = LV,
-        start = CandleStart,
-        start_mysql = util:datetime_to_mysql(CandleStart)
+        vol = C#candle.vol + LV,
+        bid = Bid,
+        ask = Ask,
+        high = proplists:get_value(#candle.high, U3, C#candle.high),
+        low = proplists:get_value(#candle.low, U3, C#candle.low)
       },
-      candle_to_memcached(NewCandle, State#state.name_bin),
-      true = ets:insert_new(DTid, NewCandle);
+      candle_to_memcached(NewCandle, State),
+      ets:update_element(DTid, Name, U3),
+      ok
   end.
-
 %%--------------------------------------------------------------------
 log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
   lager:warning("Catch EXPIRED ticks: ~p", [T]),
