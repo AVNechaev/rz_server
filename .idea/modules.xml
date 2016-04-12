@@ -2,6 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/deps/erlang_localtime/erlang_localtime.iml" filepath="$PROJECT_DIR$/deps/erlang_localtime/erlang_localtime.iml" />
       <module fileurl="file://$PROJECT_DIR$/deps/iqfeed_client/iqfeed_client.iml" filepath="$PROJECT_DIR$/deps/iqfeed_client/iqfeed_client.iml" />
       <module fileurl="file://$PROJECT_DIR$/rz_server.iml" filepath="$PROJECT_DIR$/rz_server.iml" />
     </modules>

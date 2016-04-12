@@ -26,8 +26,8 @@
 
 -include("internal.hrl").
 -record(state, {
+  stock_open_f :: stock_open_fun(),
   empty :: boolean(),
-  trading_start :: calendar:time(),
   candles_start :: pos_integer() | undefined,
   candles_start_bin :: binary() | undefined,
   candles_last_flushed :: pos_integer() | undefined,
@@ -38,7 +38,8 @@
   name :: atom(),
   name_bin :: binary(),
   history_name :: atom(),
-  reinit_timeout :: non_neg_integer()
+  reinit_timeout :: non_neg_integer(),
+  epoch_start :: non_neg_integer() %% время в секундах 1.01.1970
 }).
 
 -type frame_params() :: list().
@@ -81,14 +82,15 @@ init([Name, Params]) ->
   Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
   {ok,
     #state{
+      stock_open_f = proplists:get_value(stock_open_fun, Params),
       empty = true,
       tid = Tid,
-      trading_start = iqfeed_util:get_env(rz_server, trading_start),
       duration = proplists:get_value(duration, Params),
       name = Name,
       name_bin = atom_to_binary(Name, latin1),
       history_name = online_history_worker:reg_name(Name),
-      reinit_timeout = proplists:get_value(reinit_timeout, Params)
+      reinit_timeout = proplists:get_value(reinit_timeout, Params),
+      epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
     }}.
 
 %%--------------------------------------------------------------------
@@ -139,7 +141,7 @@ update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = B
   case ets:lookup(Tid, Name) of
     [] ->
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV},
-      candle_to_memcached(NewCandle, State#state.name_bin, State#state.candles_start_bin),
+      candle_to_memcached(NewCandle, State),
       true = ets:insert_new(Tid, NewCandle);
     [C] ->
       U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}, {#candle.bid, Bid}, {#candle.ask, Ask}],
@@ -161,23 +163,21 @@ update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = B
         high = proplists:get_value(#candle.high, U3, C#candle.high),
         low = proplists:get_value(#candle.low, U3, C#candle.low)
       },
-      candle_to_memcached(NewCandle, State#state.name_bin, State#state.candles_start_bin),
+      candle_to_memcached(NewCandle, State),
       ets:update_element(Tid, C#candle.name, U3)
   end.
 
 %%--------------------------------------------------------------------
-reinit_state(TickTime, State = #state{duration = Duration, trading_start = TradingStart, reinit_timeout = RenitTO}) ->
+reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = RenitTO}) ->
   case State#state.empty of
     false -> flush_candles(State);
     true -> ok
   end,
   ets:delete_all_objects(State#state.tid),
-  {D, _} = calendar:gregorian_seconds_to_datetime(TickTime),
-
   ExpectedStart = (TickTime div Duration) * Duration,
-  TradingStartSeconds = calendar:datetime_to_gregorian_seconds({D, TradingStart}),
+  StockOpen = (State#state.stock_open_f)(),
   Start = if
-            ExpectedStart < TradingStartSeconds -> TradingStartSeconds;
+            ExpectedStart < StockOpen -> StockOpen;
             true -> ExpectedStart
           end,
   % если на момент срабатывания таймера есть еще тики в очереди, то надо сначала
@@ -187,8 +187,8 @@ reinit_state(TickTime, State = #state{duration = Duration, trading_start = Tradi
   % тиков предыдущей секунды
   TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
   lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
-  DT = util:datetime_to_mysql(calendar:gregorian_seconds_to_datetime(Start)),
-  State#state{candles_start = Start, candles_start_bin = DT, empty = true, current_tref = TRef, candles_last_flushed = Start}.
+  StartBin = integer_to_binary(Start - State#state.epoch_start),
+  State#state{candles_start = Start, candles_start_bin = StartBin, empty = true, current_tref = TRef, candles_last_flushed = Start}.
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
@@ -206,12 +206,12 @@ flush_candles(State) ->
   ok = candles_cached_store:store(State#state.name, DT, Data).
 
 %%--------------------------------------------------------------------
-candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vol = V}, NameBin, CandleStartBin) ->
+candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vol = V}, State) ->
   Instr = case is_binary(N) of
             true -> N;
             false -> list_to_binary(N)
           end,
-  Key = <<Instr/binary, ",", NameBin/binary>>,
+  Key = <<Instr/binary, ",", (State#state.name_bin)/binary>>,
   {Mega, Sec, Micro} = erlang:now(),
   TSB = integer_to_binary(Micro + Sec * 1000000 + Mega * 1000000000000),
   OB = float_to_binary(O, [{decimals, 4}]),
@@ -230,7 +230,7 @@ candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vo
   "\",",
   "\"ts\":",
   "\"",
-  CandleStartBin/binary,
+  (State#state.candles_start_bin)/binary,
   "\",",
   "\"open\":",
   "\"",

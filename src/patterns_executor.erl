@@ -122,6 +122,7 @@ transform_pattern({{comparator, _, Operator}, LeftOperand, RightOperand}) ->
   LeftFun = transform_pattern(LeftOperand),
   RightFun = transform_pattern(RightOperand),
   case Operator of
+    "=" -> fun(Instr) -> LeftFun(Instr) == RightFun(Instr) end;
     ">" -> fun(Instr) -> LeftFun(Instr) > RightFun(Instr) end;
     "<" -> fun(Instr) -> LeftFun(Instr) < RightFun(Instr) end;
     ">=" -> fun(Instr) -> LeftFun(Instr) >= RightFun(Instr) end;
