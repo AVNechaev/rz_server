@@ -174,7 +174,7 @@ update_candle(
       CandleStartBin = erlang:integer_to_binary(CandleStart),
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, bid = Bid, ask = Ask, vol = LV},
       candle_to_memcached(CandleStartBin, NewCandle, State),
-      ets:insert(DTid, State),
+      ets:insert(DTid, NewCandle),
       TRef = erlang:start_timer((Duration + State#state.reinit_timeout) * 1000, self(), {reinit, Name}),
       ets:update_element(
         PTid,
@@ -193,7 +193,7 @@ update_candle(
       flush_candle(CP, State),
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, bid = Bid, ask = Ask, vol = LV},
       candle_to_memcached(CandleStartBin, NewCandle, State),
-      ets:insert(DTid, State),
+      ets:insert(DTid, NewCandle),
       TRef = erlang:start_timer((Duration + State#state.reinit_timeout) * 1000, self(), {reinit, Name}),
       ets:update_element(
         PTid,
@@ -266,7 +266,7 @@ flush_candle(#candle_params{start = Start, name = InstrName}, State) ->
       Candle#candle.high, 
       Candle#candle.low, 
       Candle#candle.vol]),
-  online_history_worker:add_recent_candle(State#state.history_name, InstrName),
+  online_history_worker:add_recent_candle(State#state.history_name, Candle),
   ok = candles_cached_store:store(State#state.name, DT, [Candle]).
 
 %%--------------------------------------------------------------------
