@@ -31,6 +31,7 @@
   name :: instr_name(),
   active :: boolean(),
   start :: pos_integer() | undefined, %% время начала свечи
+  start_bin :: binary() | undefined, %% то же самое в binary чтобы быстрее в memcached
   tref = undefined :: reference() | undefined, %% таймер, срабатывающий по протуханию свечи
   last_flushed :: pos_integer() | undefined %% время последнего флуша свечи
 }).
@@ -47,7 +48,10 @@
   reinit_timeout :: non_neg_integer()
 }).
 
+-type frame_params() :: list().
+
 -define(MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG, 1000).
+-define(LOG_ALL_EXPIRED_TICKS, 0).
 
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================
@@ -106,6 +110,28 @@ handle_cast({add_tick, Tick}, State) ->
   end.
 
 %%--------------------------------------------------------------------
+handle_info({timeout, TRef, {reinit, Name}}, State = #state{params_tid = PTid, data_tid = DTid}) ->
+  case ets:lookup(PTid, Name) of
+%%     не может быть, но вдруг...
+%%   TODO: потом удалить
+    [] -> ok;
+    [CP = #candle_params{tref = TRef}] ->
+      flush_candle(CP, State),
+      LastFlushed = CP#candle_params.start + State#state.duration,
+      P = [
+        {#candle_params.active, false},
+        {#candle_params.last_flushed, LastFlushed}
+      ],
+      ets:update_element(PTid, Name, P),
+      ets:delete_object(DTid, Name),
+      ok;
+%% этот вариант возможен, когда в 1 секунду сначала придет отсчет,
+%% пересчитается новый таймер, а потом сработает старый
+    [#candle_params{}] -> ok
+  end,
+  {noreply, log_expired_ticks(State, ?LOG_ALL_EXPIRED_TICKS)}.
+
+%%--------------------------------------------------------------------
 handle_call(_Request, _From, _State) -> exit(handle_call_unsupported).
 terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
@@ -140,15 +166,14 @@ is_tick_expired(#tick{name = Name, time = T}, #state{params_tid = PTid}) ->
 update_candle(
     #tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask, time = Time},
     State = #state{data_tid = DTid, params_tid = PTid, duration = Duration}) ->
-%%   если свеча есть:
-%%    если пора флушить, то: флушить, проинитить, сохранить
-%%    если не пора, то сохранить
-%%   если нет, то проинитить, сохранить
+
   case ets:lookup(PTid, Name) of
+%%     никаких данных по текущей свече не было
     [#candle_params{active = false}] ->
       CandleStart = calc_candle_start(Time, State),
+      CandleStartBin = erlang:integer_to_binary(CandleStart),
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, bid = Bid, ask = Ask, vol = LV},
-      candle_to_memcached(NewCandle, State),
+      candle_to_memcached(CandleStartBin, NewCandle, State),
       ets:insert(DTid, State),
       TRef = erlang:start_timer((Duration + State#state.reinit_timeout) * 1000, self(), {reinit, Name}),
       ets:update_element(
@@ -156,15 +181,18 @@ update_candle(
         Name,
         [
           {#candle_params.start, CandleStart},
+          {#candle_params.start_bin, CandleStartBin},
           {#candle_params.active, true},
           {#candle_params.tref, TRef}
         ]),
       ok;
-    [#candle_params{start = Start}] when (Time - Start) >= Duration ->
+%%     свеча протухла - надо сфлушить
+    [CP = #candle_params{start = Start}] when (Time - Start) >= Duration ->
       CandleStart = calc_candle_start(Time, State),
-      flush_candle(Name),
+      CandleStartBin = erlang:integer_to_binary(CandleStart),
+      flush_candle(CP, State),
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, bid = Bid, ask = Ask, vol = LV},
-      candle_to_memcached(NewCandle, State),
+      candle_to_memcached(CandleStartBin, NewCandle, State),
       ets:insert(DTid, State),
       TRef = erlang:start_timer((Duration + State#state.reinit_timeout) * 1000, self(), {reinit, Name}),
       ets:update_element(
@@ -172,10 +200,12 @@ update_candle(
         Name,
         [
           {#candle_params.start, CandleStart},
+          {#candle_params.start_bin, CandleStartBin},
           {#candle_params.tref, TRef}
         ]),
       ok;
-    [#candle_params{}] ->
+%%     текущая свеча
+    [CP = #candle_params{}] ->
       [C] = ets:lookup(DTid, Name),
       U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}, {#candle.bid, Bid}, {#candle.ask, Ask}],
       U2 = if
@@ -196,7 +226,7 @@ update_candle(
         high = proplists:get_value(#candle.high, U3, C#candle.high),
         low = proplists:get_value(#candle.low, U3, C#candle.low)
       },
-      candle_to_memcached(NewCandle, State),
+      candle_to_memcached(CP#candle_params.start_bin, NewCandle, State),
       ets:update_element(DTid, Name, U3),
       ok
   end.
@@ -207,11 +237,85 @@ log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
 log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
-calc_candle_start(TickTime, #state{duration = Duration, trading_start = TradingStart}) ->
-  {D, _} = calendar:gregorian_seconds_to_datetime(TickTime),
+calc_candle_start(TickTime, #state{duration = Duration, stock_open_f = StockOpenFun}) ->
+  StockOpen = StockOpenFun(),
   ExpectedStart = (TickTime div Duration) * Duration,
-  TradingStartSeconds = calendar:datetime_to_gregorian_seconds({D, TradingStart}),
   if
-    ExpectedStart < TradingStartSeconds -> TradingStartSeconds;
+    ExpectedStart < StockOpen -> StockOpen;
     true -> ExpectedStart
   end.
+
+%%--------------------------------------------------------------------
+flush_candle(#candle_params{start = Start, name = InstrName}, State) ->
+  [Candle] = ets:lookup(State#state.data_tid, InstrName),
+  DT = calendar:gregorian_seconds_to_datetime(Start),
+  {{Y, M, D}, {H, Mi, S}} = DT,
+  lager:info(
+    "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
+    [
+      State#state.name, 
+      D, 
+      M, 
+      Y, 
+      H, 
+      Mi, 
+      S, 
+      Candle#candle.name, 
+      Candle#candle.open, 
+      Candle#candle.close, 
+      Candle#candle.high, 
+      Candle#candle.low, 
+      Candle#candle.vol]),
+  online_history_worker:add_recent_candle(State#state.history_name, InstrName),
+  ok = candles_cached_store:store(State#state.name, DT, [Candle]).
+
+%%--------------------------------------------------------------------
+candle_to_memcached(StartBin, #candle{name = N, open = O, high = H, low = L, close = C, vol = V}, State) ->
+  Instr = case is_binary(N) of
+            true -> N;
+            false -> list_to_binary(N)
+          end,
+  Key = <<Instr/binary, ",", (State#state.name_bin)/binary>>,
+  {Mega, Sec, Micro} = erlang:now(),
+  TSB = integer_to_binary(Micro + Sec * 1000000 + Mega * 1000000000000),
+  OB = float_to_binary(O, [{decimals, 4}]),
+  HB = float_to_binary(H, [{decimals, 4}]),
+  LB = float_to_binary(L, [{decimals, 4}]),
+  CB = float_to_binary(C, [{decimals, 4}]),
+  VB = integer_to_binary(V),
+  Data = <<
+  "{\"timestamp\":",
+  TSB/binary,
+  ",",
+  "\"data\":{",
+  "\"name\":",
+  "\"",
+  Instr/binary,
+  "\",",
+  "\"ts\":",
+  "\"",
+  StartBin/binary,
+  "\",",
+  "\"open\":",
+  "\"",
+  OB/binary,
+  "\",",
+  "\"high\":",
+  "\"",
+  HB/binary,
+  "\",",
+  "\"low\":",
+  "\"",
+  LB/binary,
+  "\",",
+  "\"close\":",
+  "\"",
+  CB/binary,
+  "\",",
+  "\"volume\":",
+  "\"",
+  VB/binary,
+  "\"",
+  "}}"
+  >>,
+  erlmc:set(Key, Data).
