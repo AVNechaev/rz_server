@@ -123,7 +123,7 @@ handle_info({timeout, TRef, {reinit, Name}}, State = #state{params_tid = PTid, d
         {#candle_params.last_flushed, LastFlushed}
       ],
       ets:update_element(PTid, Name, P),
-      ets:delete_object(DTid, Name),
+      ets:delete(DTid, Name),
       ok;
 %% этот вариант возможен, когда в 1 секунду сначала придет отсчет,
 %% пересчитается новый таймер, а потом сработает старый
