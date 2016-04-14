@@ -45,7 +45,8 @@
   name :: atom(),
   name_bin :: binary(),
   history_name :: atom(),
-  reinit_timeout :: non_neg_integer()
+  reinit_timeout :: non_neg_integer(),
+  epoch_start :: non_neg_integer() %% время в секундах 1.01.1970
 }).
 
 -type frame_params() :: list().
@@ -96,7 +97,8 @@ init([Name, Params]) ->
       name = Name,
       name_bin = atom_to_binary(Name, latin1),
       history_name = online_history_worker:reg_name(Name),
-      reinit_timeout = proplists:get_value(reinit_timeout, Params)
+      reinit_timeout = proplists:get_value(reinit_timeout, Params),
+      epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
     }}.
 
 %%--------------------------------------------------------------------
@@ -171,7 +173,7 @@ update_candle(
 %%     никаких данных по текущей свече не было
     [#candle_params{active = false}] ->
       CandleStart = calc_candle_start(Time, State),
-      CandleStartBin = erlang:integer_to_binary(CandleStart),
+      CandleStartBin = erlang:integer_to_binary(CandleStart - State#state.epoch_start),
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, bid = Bid, ask = Ask, vol = LV},
       candle_to_memcached(CandleStartBin, NewCandle, State),
       ets:insert(DTid, NewCandle),
@@ -189,7 +191,7 @@ update_candle(
 %%     свеча протухла - надо сфлушить
     [CP = #candle_params{start = Start}] when (Time - Start) >= Duration ->
       CandleStart = calc_candle_start(Time, State),
-      CandleStartBin = erlang:integer_to_binary(CandleStart),
+      CandleStartBin = erlang:integer_to_binary(CandleStart - State#state.epoch_start),
       flush_candle(CP, State),
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, bid = Bid, ask = Ask, vol = LV},
       candle_to_memcached(CandleStartBin, NewCandle, State),
