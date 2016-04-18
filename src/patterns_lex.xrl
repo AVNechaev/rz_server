@@ -1,7 +1,7 @@
 Definitions.
 
 D = [0-9]
-Frame = (D|1|10)
+Frame = (D|1|3|5|10)
 Cmp = (>|<|>=|<=|=)
 WS  = [\000-\s]
 %offset - от 1 до 22
