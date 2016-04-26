@@ -26,7 +26,6 @@ start_link() ->
 init([]) ->
   Names = [timeframe_worker:reg_name(N) || {N, _} <- iqfeed_util:get_env(rz_server, frames)],
   TickFun = fun(Tick) ->
-    lager:info("TICK:~p", [Tick]),
     lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names),
     patterns_executor:check_patterns(Tick#tick.name)
     end,
