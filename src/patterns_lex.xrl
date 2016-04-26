@@ -9,12 +9,13 @@ HistOffset = ([2-9]|1[0-9]|2[0-2])
 HistValue = (OPEN|CLOSE|HIGH|LOW|VOLUME)
 CurValue = (OPEN|PRICE|HIGH|LOW|BID|ASK|VOLUME)
 ShortCurValue = (Price|Bid|Ask)
+InstrName = (Instr|SNP)
 
 Rules.
 
-Instr#{Frame},1#{CurValue}                  : {token, {instr, TokenLine, TokenChars}}.
-Instr#{Frame},{HistOffset}#{HistValue}      : {token, {instr, TokenLine, TokenChars}}.
-Instr#{ShortCurValue}                       : {token, {instr, TokenLine, TokenChars}}.
+{InstrName}#{Frame}Name}Name},1#{CurValue}        : {token, {instr, TokenLine, TokenChars}}.
+{InstrName}#{Frame},{HistOffset}#{HistValue}      : {token, {instr, TokenLine, TokenChars}}.
+{InstrName}#{ShortCurValue}                       : {token, {instr, TokenLine, TokenChars}}.
 
 and|AND                                     : {token, {two_op_logic, TokenLine, op_and}}.
 or|OR                                       : {token, {two_op_logic, TokenLine, op_or}}.

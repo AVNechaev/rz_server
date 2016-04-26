@@ -33,7 +33,8 @@ init([]) ->
 
   {ok, Instr} = iqfeed_util:load_instr_csv(
     iqfeed_util:get_env(iqfeed_client, instr_file),
-    iqfeed_util:get_env(iqfeed_client, instr_file_header)
+    iqfeed_util:get_env(iqfeed_client, instr_file_header),
+    iqfeed_util:get_env(iqfeed_client, instr_defaults)
   ),
 
   MemCached = {memcached,

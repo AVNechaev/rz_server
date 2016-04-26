@@ -68,7 +68,7 @@ add_tick(ThisName, Tick) -> gen_server:cast(ThisName, {add_tick, Tick}).
 storage_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_ets_current_candles").
 
 %%--------------------------------------------------------------------
--spec get_current_candle(InstrName :: atom(), StorageName :: atom()) -> {ok, #candle{}} | {error, not_found}.
+-spec get_current_candle(InstrName :: instr_name(), StorageName :: atom()) -> {ok, #candle{}} | {error, not_found}.
 get_current_candle(InstrName, StorageName) ->
   case ets:lookup(StorageName, InstrName) of
     [] -> {error, not_found};
