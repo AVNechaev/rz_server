@@ -98,7 +98,7 @@ init([]) ->
         {["nyse", "instrs"], web_instruments, []}, %% POST, PUT, GET
         {["nyse", "instrs", instr], web_single_instrument, []}, %% DELETE
         {["patterns"], web_patterns, []}, %% POST, GET
-        {["patterns", pattern_id], web_single_pattern, []} %% DELETE
+        {["patterns", pattern_id], web_single_pattern, []} %% PUT, DELETE
       ]}
     ]]},
     permanent, brutal_kill, worker, dynamic},

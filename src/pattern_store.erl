@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, add_pattern/1, delete_all_patterns/0, remove_pattern/1, get_patterns_indexes/0]).
+-export([start_link/0, add_pattern/1, delete_all_patterns/0, remove_pattern/1, get_patterns_indexes/0, replace_pattern/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -47,6 +47,10 @@ add_pattern(Pattern) -> gen_server:call(?SERVER, {add_pattern, Pattern}).
 %%--------------------------------------------------------------------
 -spec delete_all_patterns() -> ok.
 delete_all_patterns() -> gen_server:call(?SERVER, delete_all_patterns).
+
+%%--------------------------------------------------------------------
+-spec replace_pattern(Id :: pattern_index(), NewText :: pattern_text) -> ok | {error, not_found | {compile_error, Reason :: term()}}.
+replace_pattern(Id, NewText) -> gen_server:call(?SERVER, {replace_pattern, Id, NewText}).
 
 %%--------------------------------------------------------------------
 -spec remove_pattern(Id :: pattern_index()) -> ok | {error, not_found}.
@@ -89,6 +93,29 @@ handle_call(delete_all_patterns, _From, State) ->
   emysql:execute(mysql_config_store, <<"delete from PATTERNS">>),
   lager:warning("All patterns deleted"),
   {reply, ok, State};
+%%---
+handle_call({replace_pattern, Id, NewText}, _From, State) ->
+  lager:info("REPLACING pattern # ~p with ~p", [Id, NewText]),
+  IdBin = integer_to_binary(Id),
+  Pattern = pt_to_pattern(Id, NewText),
+  case emysql:as_record(
+    emysql:execute(mysql_config_store, <<"select id from PATTERNS WHERE id=", IdBin/binary>>),
+    add_res,
+    record_info(fields, add_res)) of
+    [] -> {reply, {error, not_found}, State};
+    _ ->
+      patterns_executor:delete_pattern(Id),
+      case patterns_executor:load_pattern(Pattern) of
+        ok ->
+          emysql:execute(
+            mysql_config_store,
+            <<"update PATTERNS set expr='", NewText/binary,"' when ID=", IdBin/binary>>),
+          {reply, ok, State};
+        {error, What} ->
+          lager:warning("An error occured when adding a pattern: ~p", [What]),
+          {error, {compile_error, What}}
+      end
+  end;
 %%---
 handle_call({remove_pattern, Id}, _From, State) ->
   IdText = integer_to_binary(Id),
