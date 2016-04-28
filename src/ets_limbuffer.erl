@@ -12,7 +12,19 @@
 -author("anechaev").
 
 %% API
--export([create_storage/0, create_buffer/3, push/2, get/2, create_storage/1, desired_counter_name/1, create_buffer/4, push/5, get/5]).
+-export([
+  create_storage/0,
+  create_buffer/3,
+  push/2,
+  get/2,
+  create_storage/1,
+  desired_counter_name/1,
+  create_buffer/4,
+  push/5,
+  get/5,
+  maybe_push/5,
+  delete_buffers/1]).
+
 -type storage_t() :: ets:tid().
 -type buffer_name() :: binary() | list() | atom().
 
@@ -53,6 +65,10 @@ create_buffer(Tid, Name, CounterName, Length) ->
   true = ets:insert_new(Tid, {CounterName, -1}), % default value; will be 0 at the 1st push
   ok.
 
+-spec delete_buffers(Tid :: storage_t()) -> ok.
+delete_buffers(Tid) ->
+  ets:delete_all_objects(Tid),
+  ok.
 %%%-------------------------------------------------------------------
 -spec push(Data :: any(), Buffer :: #context{}) -> ok.
 push(Data, #context{tid = Tid, counter_name = Counter, name = Name, length = Length}) ->
@@ -67,6 +83,14 @@ push(Data, Tid, Name, CounterName, Length) ->
   Id = ets:update_counter(Tid, CounterName, {2, 1, Length - 1, 0}),
   ok.
 
+%%%-------------------------------------------------------------------
+-spec maybe_push(Data :: any(), Tid :: storage_t(), Name :: buffer_name(), CounterName :: any(), Length :: pos_integer()) -> ok.
+maybe_push(Data, Tid, Name, CounterName, Length) ->
+  try
+    push(Data, Tid, Name, CounterName, Length)
+  catch
+    _:_ -> ok
+  end.
 %%%-------------------------------------------------------------------
 %depth - 0..length -1
 -spec get(Buffer :: #context{}, Depth :: non_neg_integer()) -> {ok, Data :: any()} | {error, not_found}.
