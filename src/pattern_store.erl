@@ -133,7 +133,7 @@ handle_call({remove_pattern, Id}, _From, State) ->
 %%---
 handle_call(init_patterns, _From, State) ->
   [
-    patterns_executor:load_pattern(pt_to_pattern(Id, Text))
+    ok = patterns_executor:load_pattern(pt_to_pattern(Id, Text))
     || #sel_res{id = Id, expr = Text} <-
     emysql:as_record(
       emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
