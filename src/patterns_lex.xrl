@@ -13,7 +13,7 @@ InstrName = (Instr|SNP)
 
 Rules.
 
-{InstrName}#{Frame}Name}Name},1#{CurValue}        : {token, {instr, TokenLine, TokenChars}}.
+{InstrName}#{Frame},1#{CurValue}                  : {token, {instr, TokenLine, TokenChars}}.
 {InstrName}#{Frame},{HistOffset}#{HistValue}      : {token, {instr, TokenLine, TokenChars}}.
 {InstrName}#{ShortCurValue}                       : {token, {instr, TokenLine, TokenChars}}.
 
