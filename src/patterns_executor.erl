@@ -144,19 +144,27 @@ transform_pattern({constant, _, Value}) ->
   fun(_) -> Value end;
 %%---
 transform_pattern({instr, Line, Instr}) when is_list(Instr) -> transform_pattern({instr, Line, list_to_binary(Instr)});
-transform_pattern({instr, Line, <<"Instr#Price">>}) ->
+transform_pattern({instr, Line, Instr}) ->
+  case binary:split(Instr, <<"#">>) of
+    [<<"Instr">>, Data] -> transform_instr(Line, Data, ordinal_instr);
+    [?SNP_PREFIX, Data] -> transform_instr(Line, Data, snp_instr)
+  end.
+
+%%--------------------------------------------------------------------
+-spec transform_instr(Line :: non_neg_integer(), Data :: binary(), InstrType :: ordinal_instr | snp_instr) -> pattern_fun().
+transform_instr(Line, <<"Price">>, InstrType) ->
   DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
-  transform_pattern({instr, Line, <<"Instr#", DefFrame/binary, ",1#PRICE">>});
+  transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, InstrType);
 %%---
-transform_pattern({instr, Line, <<"Instr#Bid">>}) ->
+transform_instr(Line, <<"Bid">>, InstrType) ->
   DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
-  transform_pattern({instr, Line, <<"Instr#", DefFrame/binary, ",1#BID">>});
+  transform_instr(Line, <<DefFrame/binary, ",1#BID">>, InstrType);
 %%---
-transform_pattern({instr, Line, <<"Instr#Ask">>}) ->
+transform_instr(Line, <<"Ask">>, InstrType) ->
   DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
-  transform_pattern({instr, Line, <<"Instr#", DefFrame/binary, ",1#ASK">>});
+  transform_instr(Line, <<DefFrame/binary, ",1#ASK">>, InstrType);
 %%---
-transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
+transform_instr(_, Data, InstrType) ->
   [FrameOff, Val] = binary:split(Data, <<"#">>),
   [Frame, Offset] = binary:split(FrameOff, <<",">>),
   FrameName = proplists:get_value(Frame, iqfeed_util:get_env(rz_server, pattern_names_to_frames)),
@@ -184,9 +192,23 @@ transform_pattern({instr, _, <<"Instr#", Data/binary>>}) ->
               <<"ASK">> -> fun(#candle{ask = V}) -> V end;
               <<"VOLUME">> -> fun(#candle{vol = V}) -> V end
             end,
-  fun(Instr) ->
-    case GetCandleFun(Instr) of
-      {ok, C} -> ExtrFun(C);
-      {error, not_found} -> throw(?NO_DATA)
-    end
+  case InstrType of
+    ordinal_instr ->
+      fun(Instr) ->
+        case GetCandleFun(Instr) of
+          {ok, C} -> ExtrFun(C);
+          {error, not_found} -> throw(?NO_DATA)
+        end
+      end;
+    snp_instr ->
+      SNPName = iqfeed_util:get_env(rz_server, snp_instr_name),
+      SNPNameString = binary_to_list(SNPName),
+      fun(Name) when Name == SNPName orelse Name == SNPNameString->
+        case GetCandleFun(SNPName) of
+          {ok, C} -> ExtrFun(C);
+          {error, not_found} -> throw(?NO_DATA)
+        end;
+        (_) -> throw(?NO_DATA)
+      end
   end.
+

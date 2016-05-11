@@ -26,14 +26,14 @@ start_link() ->
 init([]) ->
   Names = [timeframe_worker:reg_name(N) || {N, _} <- iqfeed_util:get_env(rz_server, frames)],
   TickFun = fun(Tick) ->
-    lager:info("TICK:~p", [Tick]),
     lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names),
     patterns_executor:check_patterns(Tick#tick.name)
     end,
 
   {ok, Instr} = iqfeed_util:load_instr_csv(
     iqfeed_util:get_env(iqfeed_client, instr_file),
-    iqfeed_util:get_env(iqfeed_client, instr_file_header)
+    iqfeed_util:get_env(iqfeed_client, instr_file_header),
+    iqfeed_util:get_env(iqfeed_client, instr_defaults)
   ),
 
   MemCached = {memcached,
@@ -98,7 +98,7 @@ init([]) ->
         {["nyse", "instrs"], web_instruments, []}, %% POST, PUT, GET
         {["nyse", "instrs", instr], web_single_instrument, []}, %% DELETE
         {["patterns"], web_patterns, []}, %% POST, GET
-        {["patterns", pattern_id], web_single_pattern, []} %% DELETE
+        {["patterns", pattern_id], web_single_pattern, []} %% PUT, DELETE
       ]}
     ]]},
     permanent, brutal_kill, worker, dynamic},

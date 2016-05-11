@@ -15,7 +15,7 @@
   allowed_methods/2,
   content_types_provided/2,
   content_types_accepted/2,
-  instr_list/2,
+  patterns_list/2,
   process_post/2]).
 
 -include("internal.hrl").
@@ -26,11 +26,11 @@
 
 init([]) -> {ok, undefined}.
 allowed_methods(ReqData, Context) -> {['GET', 'POST'], ReqData, Context}.
-content_types_provided(ReqData, Context) -> {[{"application/json", instr_list}], ReqData, Context}.
+content_types_provided(ReqData, Context) -> {[{"application/json", patterns_list}], ReqData, Context}.
 content_types_accepted(ReqData, Context) -> {[{"application/json", process_post}], ReqData, Context}.
 
 %%--------------------------------------------------------------------
-instr_list(ReqData, Context) ->
+patterns_list(ReqData, Context) ->
   {ok, Data} = pattern_store:get_patterns_indexes(),
   Payload = mochijson2:encode([{struct, [{id, Id}]} || Id <- Data]),
   {Payload, ReqData, Context}.

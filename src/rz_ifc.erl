@@ -27,5 +27,5 @@ load_instrs(Instrs) ->
 %%--------------------------------------------------------------------
 -spec load_instrs_from_file(Filename :: file:filename()) -> ok.
 load_instrs_from_file(Filename) ->
-  {ok, I} = iqfeed_util:load_instr_csv(Filename),
+  {ok, I} = iqfeed_util:load_instr_csv(Filename, 1, iqfeed_util:get_env(iqfeed_client, instr_defaults)),
   load_instrs(I).

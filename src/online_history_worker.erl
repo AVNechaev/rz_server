@@ -68,12 +68,13 @@ set_instrs(ThisName, Instrs) -> gen_server:call(ThisName, {set_instrs, Instrs}).
 %%% gen_server callbacks
 %%%===================================================================
 init([Name, Params, Instrs]) ->
+  UniqInstrs = lists:usort(Instrs),
   Storage = ets_limbuffer:create_storage(storage_name(Name)),
   Depth = proplists:get_value(history_depth, Params),
   Buffers = case proplists:get_value(buffers_on_the_fly, Params) of
               true -> dict:new();
               false ->
-                lists:foreach(fun(I) -> ets_limbuffer:create_buffer(Storage, I, buf_counter_name(I), Depth) end, Instrs),
+                lists:foreach(fun(I) -> ets_limbuffer:create_buffer(Storage, I, buf_counter_name(I), Depth) end, UniqInstrs),
                 undefined
             end,
   {ok, #state{
@@ -96,19 +97,26 @@ handle_cast({add_recent_candle, Candle = #candle{name = Instr}}, State = #state{
   ets_limbuffer:push(Candle, State#state.storage, Instr, CntName, State#state.depth),
   {noreply, State#state{known_buffers = NewBuff}};
 %%---
+%% при перезагрузке списка инструментов может быть, что в mailbox остался старый тик
+%% с именем, которого уже нет, поэтому будем засовывать данные в буфер, забивая на взможные ошибки
 handle_cast({add_recent_candle, Candle = #candle{name = Instr}}, State) ->
-  ets_limbuffer:push(Candle, State#state.storage, Instr, buf_counter_name(Instr), State#state.depth),
+  ets_limbuffer:maybe_push(Candle, State#state.storage, Instr, buf_counter_name(Instr), State#state.depth),
   {noreply, State}.
 
 %%--------------------------------------------------------------------
-handle_call({set_instrs, _}, _From, State = #state{buffer_on_the_fly = true}) -> {reply, ok, State};
+handle_call({set_instrs, _}, _From, State = #state{buffer_on_the_fly = true}) ->
+  ok = ets_limbuffer:delete_buffers(State#state.storage),
+  {reply, ok, State};
+%%---
 handle_call({set_instrs, Instrs}, _From, State) ->
+  UniqInstrs = lists:usort(Instrs),
+  ok = ets_limbuffer:delete_buffers(State#state.storage),
   lists:foreach(
     fun(I) ->
       ets_limbuffer:create_buffer(State#state.storage, I, buf_counter_name(I), State#state.depth)
     end,
-    Instrs),
-  {reply, ok, State#state{}}.
+    UniqInstrs),
+  {reply, ok, State}.
 
 %%--------------------------------------------------------------------
 handle_info(_Info, _State) -> exit(handle_info_unsupported).
