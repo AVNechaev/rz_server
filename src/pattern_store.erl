@@ -77,7 +77,9 @@ handle_call({add_pattern, PatternText}, _From, State) ->
       {reply, {ok, Pattern}, State};
     {error, What} ->
       lager:warning("An error occured when adding a pattern: ~p", [What]),
-      {error, What}
+      IdBin = erlang:integer_to_binary(Id),
+      emysql:execute(mysql_config_store, <<"delete from PATTERNS where id=",IdBin/binary>>),
+      {reply, {error, What}, State}
   end;
 
 %%---
