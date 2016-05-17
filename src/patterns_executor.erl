@@ -134,7 +134,12 @@ transform_pattern({{two_op_arith, _, Operator}, LeftOperand, RightOperand}) ->
   LeftFun = transform_pattern(LeftOperand),
   RightFun = transform_pattern(RightOperand),
   case Operator of
-    op_rem -> fun(Instr) -> LeftFun(Instr) rem RightFun(Instr) end;
+    op_rem ->
+      fun(Instr) ->
+        Left = LeftFun(Instr),
+        Right = RightFun(Instr),
+        Left - trunc(Left / Right) * Right
+      end;
     op_plus -> fun(Instr) -> LeftFun(Instr) + RightFun(Instr) end;
     op_minus -> fun(Instr) -> LeftFun(Instr) - RightFun(Instr) end
   end;
@@ -203,7 +208,7 @@ transform_instr(_, Data, InstrType) ->
     snp_instr ->
       SNPName = iqfeed_util:get_env(rz_server, snp_instr_name),
       SNPNameString = binary_to_list(SNPName),
-      fun(Name) when Name == SNPName orelse Name == SNPNameString->
+      fun(Name) when Name == SNPName orelse Name == SNPNameString ->
         case GetCandleFun(SNPName) of
           {ok, C} -> ExtrFun(C);
           {error, not_found} -> throw(?NO_DATA)
