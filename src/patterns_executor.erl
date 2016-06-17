@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_pattern/1, compile_pattern/1, check_patterns/1, delete_pattern/1]).
+-export([start_link/0, load_pattern/1, compile_pattern/1, check_patterns/2, delete_pattern/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -47,8 +47,9 @@ load_pattern(Pat) -> gen_server:call(?SERVER, {load_pattern, Pat}).
 delete_pattern(PatId) -> gen_server:call(?SERVER, {delete_pattern, PatId}).
 
 %%--------------------------------------------------------------------
--spec check_patterns(InstrName :: instr_name()) -> ok.
-check_patterns(Instr) -> gen_server:cast(?SERVER, {check_patterns, Instr}).
+%% см timeframe_worker:universal_to_candle_time()
+-spec check_patterns(InstrName :: instr_name(), UniversalCandleTime :: pos_integer()) -> ok.
+check_patterns(Instr, UniversalCandleTime) -> gen_server:cast(?SERVER, {check_patterns, Instr, UniversalCandleTime}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -82,8 +83,8 @@ handle_call({delete_pattern, PatId}, _From, State) ->
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
-handle_cast({check_patterns, Instr}, State = #state{workers = W}) ->
-  [pat_exec_worker:check_patterns(P, Instr) || P <- W],
+handle_cast({check_patterns, Instr, UTCCandlesTime}, State = #state{workers = W}) ->
+  [pat_exec_worker:check_patterns(P, Instr, UTCCandlesTime) || P <- W],
   {noreply, State}.
 
 %%--------------------------------------------------------------------

@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_pattern/3, check_patterns/2, delete_pattern/2]).
+-export([start_link/0, load_pattern/3, check_patterns/3, delete_pattern/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -64,8 +64,8 @@ load_pattern(ThisPid, PatDesc, PatFun) -> gen_server:call(ThisPid, {load_pattern
 delete_pattern(ThisPid, PatId) -> gen_server:call(ThisPid, {delete_pattern, PatId}).
 
 %%--------------------------------------------------------------------
--spec check_patterns(ThisPid :: pid(), Instr :: instr_name()) -> ok.
-check_patterns(ThisPid, Instr) -> gen_server:cast(ThisPid, {check_patterns, Instr}).
+-spec check_patterns(ThisPid :: pid(), Instr :: instr_name(), UTCCandlesTime :: pos_integer()) -> ok.
+check_patterns(ThisPid, Instr, UTCCandlesTime) -> gen_server:cast(ThisPid, {check_patterns, Instr, UTCCandlesTime}).
 
 %%--------------------------------------------------------------------
 handle_call({load_pattern, #pattern{idx = Id, text = Txt}, PatFun}, _From, State) ->
@@ -77,17 +77,16 @@ handle_call({delete_pattern, PatId}, _From, State) ->
   {reply, ok, State#state{patterns = NewPatterns}}.
 
 %%--------------------------------------------------------------------
-handle_cast({check_patterns, Instr}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
-  NowSecUTC = calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
+handle_cast({check_patterns, Instr, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
   F =
     fun(#pattern_data{id = Id, f = PatFun}) ->
       FiresId = ?FIRES_ID(Id, Instr),
       case ets:lookup(Tid, FiresId) of
-        [#fires_data{last_fired = LF}] when NowSecUTC - LF > Timeout ->
+        [#fires_data{last_fired = LF}] when UTCCandlesTime - LF > Timeout ->
           case PatFun(Instr) of
             true ->
               on_fired(Id, Instr, State),
-              true = ets:update_element(Tid, FiresId, [{#fires_data.last_fired, NowSecUTC}]),
+              true = ets:update_element(Tid, FiresId, [{#fires_data.last_fired, UTCCandlesTime}]),
               ok;
             false ->
               ok
@@ -97,7 +96,7 @@ handle_cast({check_patterns, Instr}, State = #state{tid = Tid, refire_timeout = 
           case PatFun(Instr) of
             true ->
               on_fired(Id, Instr, State),
-              true = ets:insert_new(Tid, #fires_data{id = FiresId, last_fired = NowSecUTC}),
+              true = ets:insert_new(Tid, #fires_data{id = FiresId, last_fired = UTCCandlesTime}),
               ok;
             false ->
               ok

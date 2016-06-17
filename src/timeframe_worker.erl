@@ -24,11 +24,15 @@
 
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
 
+-type fires_fun() :: fun((InstrName :: instr_name, TickCandleTime :: pos_integer()) -> ok).
+
 -include("internal.hrl").
 -record(state, {
   stock_open_f :: stock_open_fun(),
+  fires_fun :: fires_fun(),
   empty :: boolean(),
   candles_start :: pos_integer() | undefined,
+  candles_start_utc :: pos_integer() | undefined,
   candles_start_bin :: binary() | undefined,
   candles_last_flushed :: pos_integer() | undefined,
   expired_ticks = 0 :: non_neg_integer(), %% количество устаревших тиков (пришедших по времени после флуша соотв свечки)
@@ -80,9 +84,15 @@ get_current_candle(InstrName, StorageName) ->
 %%%===================================================================
 init([Name, Params]) ->
   Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
+  FiresFun =
+    case proplists:get_value(fires_data, Params, false) of
+      true -> fun active_fires_fun/2;
+      false -> fun inactive_fires_fun/2
+    end,
   {ok,
     #state{
       stock_open_f = proplists:get_value(stock_open_fun, Params),
+      fires_fun = FiresFun,
       empty = true,
       tid = Tid,
       duration = proplists:get_value(duration, Params),
@@ -99,6 +109,7 @@ handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed 
     LastFlushed == undefined orelse Tick#tick.time >= LastFlushed ->
       NewState = reinit_state(Tick#tick.time, State),
       update_current_candle(Tick, NewState),
+      NewState#state.fires_fun(Tick#tick.name, universal_to_candle_time(NewState)),
       {noreply, NewState#state{empty = false}};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -113,6 +124,7 @@ handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}
                    true -> State
                  end,
       update_current_candle(Tick, NewState),
+      NewState#state.fires_fun(Tick#tick.name, universal_to_candle_time(NewState)),
       {noreply, NewState};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -188,7 +200,13 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
   TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
   lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
   StartBin = integer_to_binary(Start - State#state.epoch_start),
-  State#state{candles_start = Start, candles_start_bin = StartBin, empty = true, current_tref = TRef, candles_last_flushed = Start}.
+  State#state{
+    candles_start = Start,
+    candles_start_bin = StartBin,
+    candles_start_utc = calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
+    empty = true,
+    current_tref = TRef,
+    candles_last_flushed = Start}.
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
@@ -261,3 +279,12 @@ log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
   lager:warning("Catch EXPIRED ticks: ~p", [T]),
   State#state{expired_ticks = 0};
 log_expired_ticks(State, _) -> State.
+
+%%--------------------------------------------------------------------
+active_fires_fun(InstrName, TickCandleTime) -> patterns_executor:check_pattern(InstrName, TickCandleTime).
+inactive_fires_fun(_, _) -> ok.
+
+%%--------------------------------------------------------------------
+%считает текущее время относительно времени начала свечи (которое может не совпадать с UTC, а идти с запаздыванием
+universal_to_candle_time(State) ->
+  calendar:datetime_to_gregorian_seconds(erlang:universaltime()) - State#state.candles_start_utc + State#state.candles_start.
