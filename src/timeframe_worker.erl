@@ -281,7 +281,7 @@ log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
 log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
-active_fires_fun(InstrName, TickCandleTime) -> patterns_executor:check_pattern(InstrName, TickCandleTime).
+active_fires_fun(InstrName, TickCandleTime) -> patterns_executor:check_patterns(InstrName, TickCandleTime).
 inactive_fires_fun(_, _) -> ok.
 
 %%--------------------------------------------------------------------
