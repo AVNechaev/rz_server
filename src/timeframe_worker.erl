@@ -106,7 +106,7 @@ init([Name, Params]) ->
 %%--------------------------------------------------------------------
 handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed = LastFlushed}) ->
   if
-    LastFlushed == undefined orelse Tick#tick.time >= LastFlushed ->
+    LastFlushed == undefined orelse Tick#tick.time > LastFlushed ->
       NewState = reinit_state(Tick#tick.time, State),
       update_current_candle(Tick, NewState),
       NewState#state.fires_fun(Tick#tick.name, universal_to_candle_time(NewState)),
@@ -117,7 +117,7 @@ handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed 
 %%---
 handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}) ->
   if
-    LastFlushed == undefined orelse Tick#tick.time >= LastFlushed ->
+    LastFlushed == undefined orelse Tick#tick.time > LastFlushed ->
       NewState = if
                    (Tick#tick.time - State#state.candles_start) >= State#state.duration ->
                      reinit_state(Tick#tick.time, State);
