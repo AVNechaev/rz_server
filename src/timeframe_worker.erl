@@ -109,7 +109,7 @@ handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed 
     LastFlushed == undefined orelse Tick#tick.time > LastFlushed ->
       NewState = reinit_state(Tick#tick.time, State),
       update_current_candle(Tick, NewState),
-      NewState#state.fires_fun(Tick#tick.name, universal_to_candle_time(NewState)),
+      (NewState#state.fires_fun)(Tick#tick.name, universal_to_candle_time(NewState)),
       {noreply, NewState#state{empty = false}};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -124,7 +124,7 @@ handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}
                    true -> State
                  end,
       update_current_candle(Tick, NewState),
-      NewState#state.fires_fun(Tick#tick.name, universal_to_candle_time(NewState)),
+      (NewState#state.fires_fun)(Tick#tick.name, universal_to_candle_time(NewState)),
       {noreply, NewState};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
