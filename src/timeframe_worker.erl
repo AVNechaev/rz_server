@@ -137,6 +137,7 @@ handle_info({timeout, TRef, reinit}, State = #state{current_tref = OtherTRef}) w
   {noreply, State};
 handle_info({timeout, _, reinit}, State) ->
   flush_candles(State),
+  refire_on_flush_candles(State),
   ets:delete_all_objects(State#state.tid),
   LastFlushed = State#state.candles_start + State#state.duration, %% по идее не должно быть UNDEFINED, т.к. таймер взводится в reinit, но на всякий случай
   {noreply, log_expired_ticks(State#state{empty = true, candles_last_flushed = LastFlushed}, ?LOG_ALL_EXPIRED_TICKS)}.
@@ -288,3 +289,12 @@ inactive_fires_fun(_, _) -> ok.
 %считает текущее время относительно времени начала свечи (которое может не совпадать с UTC, а идти с запаздыванием
 universal_to_candle_time(State) ->
   calendar:datetime_to_gregorian_seconds(erlang:universaltime()) - State#state.candles_start_utc + State#state.candles_start.
+
+%%--------------------------------------------------------------------
+refire_on_flush_candles(State) ->
+  CurrentTime = universal_to_candle_time(State),
+  ets:foldl(
+    fun(#candle{name = N}, _) -> patterns_executor:check_patterns(N, CurrentTime) end,
+    undefined,
+    State#state.tid),
+  ok.
