@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, store/2]).
+-export([start_link/2, store/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -50,8 +50,8 @@ start_link(MaxSize, Timeout) ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [MaxSize, Timeout], []).
 
 %%--------------------------------------------------------------------
--spec store(PatId :: pattern_index(), Instr :: instr_name()) -> ok.
-store(PatId, Instr) -> gen_server:cast(?SERVER, {store, PatId, Instr}).
+-spec store(PatId :: pattern_index(), Instr :: instr_name(), UTCCandlesTime :: non_neg_integer()) -> ok.
+store(PatId, Instr, UTCCandlesTime) -> gen_server:cast(?SERVER, {store, PatId, Instr, UTCCandlesTime}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -61,11 +61,11 @@ init([MaxSize, Timeout]) ->
   {ok, #state{max_size = MaxSize, timeout = Timeout}}.
 
 %%--------------------------------------------------------------------
-handle_cast({store, PatId, Instr}, State) ->
+handle_cast({store, PatId, Instr, UTCCandlesTime}, State) ->
   Item = #cache_item{
     pat_id = PatId,
     instr = Instr,
-    ts = util:datetime_to_mysql(erlang:universaltime())
+    ts = util:datetime_to_mysql(UTCCandlesTime)
   },
   NewCached = [Item | State#state.cache],
   if

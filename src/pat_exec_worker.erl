@@ -85,7 +85,7 @@ handle_cast({check_patterns, Instr, UTCCandlesTime}, State = #state{tid = Tid, r
         [#fires_data{last_fired = LF}] when UTCCandlesTime - LF > Timeout ->
           case PatFun(Instr) of
             true ->
-              on_fired(Id, Instr, State),
+              on_fired(Id, Instr, UTCCandlesTime, State),
               true = ets:update_element(Tid, FiresId, [{#fires_data.last_fired, UTCCandlesTime}]),
               ok;
             false ->
@@ -95,7 +95,7 @@ handle_cast({check_patterns, Instr, UTCCandlesTime}, State = #state{tid = Tid, r
         [] ->
           case PatFun(Instr) of
             true ->
-              on_fired(Id, Instr, State),
+              on_fired(Id, Instr, UTCCandlesTime, State),
               true = ets:insert_new(Tid, #fires_data{id = FiresId, last_fired = UTCCandlesTime}),
               ok;
             false ->
@@ -116,7 +116,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-on_fired(PatIdx, Instr, _State) ->
-  lager:info("PATTERN ~p fired for ~p at ~p", [PatIdx, Instr, erlang:now()]),
-  fires_cached_store:store(PatIdx, Instr),
+on_fired(PatIdx, Instr, UTCCandlesTime, _State) ->
+  lager:info("PATTERN ~p fired for ~p at ~p", [PatIdx, Instr, UTCCandlesTime]),
+  fires_cached_store:store(PatIdx, Instr, UTCCandlesTime),
   ok.
