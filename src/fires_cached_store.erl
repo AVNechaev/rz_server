@@ -65,7 +65,7 @@ handle_cast({store, PatId, Instr, UTCCandlesTime}, State) ->
   Item = #cache_item{
     pat_id = PatId,
     instr = Instr,
-    ts = util:datetime_to_mysql(UTCCandlesTime)
+    ts = util:datetime_to_mysql(calendar:gregorian_seconds_to_datetime(UTCCandlesTime))
   },
   NewCached = [Item | State#state.cache],
   if
