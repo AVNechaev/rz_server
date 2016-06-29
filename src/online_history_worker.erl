@@ -53,7 +53,7 @@ storage_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_ets_history_buffer").
 
 %%--------------------------------------------------------------------
 -spec add_recent_candle(ThisName :: atom(), Candle :: #candle{}) -> ok.
-add_recent_candle(ThisName, Candle) -> gen_server:cast(ThisName, {add_recent_candle, Candle}).
+add_recent_candle(ThisName, Candle) -> gen_server:call(ThisName, {add_recent_candle, Candle}).
 
 %%--------------------------------------------------------------------
 -spec get_candle(StorageName :: atom(), Instr :: instr_name(), Length :: pos_integer(), Depth :: pos_integer()) -> {ok, #candle{}} | {error, not_found}.
@@ -85,7 +85,7 @@ init([Name, Params, Instrs]) ->
     known_buffers = Buffers}}.
 
 %%--------------------------------------------------------------------
-handle_cast({add_recent_candle, Candle = #candle{name = Instr}}, State = #state{buffer_on_the_fly = true, known_buffers = Buffers}) ->
+handle_call({add_recent_candle, Candle = #candle{name = Instr}}, _From, State = #state{buffer_on_the_fly = true, known_buffers = Buffers}) ->
   CntName = buf_counter_name(Instr),
   NewBuff = case dict:find(Instr, Buffers) of
               error ->
@@ -95,15 +95,14 @@ handle_cast({add_recent_candle, Candle = #candle{name = Instr}}, State = #state{
                 Buffers
             end,
   ets_limbuffer:push(Candle, State#state.storage, Instr, CntName, State#state.depth),
-  {noreply, State#state{known_buffers = NewBuff}};
+  {reply, ok, State#state{known_buffers = NewBuff}};
 %%---
 %% при перезагрузке списка инструментов может быть, что в mailbox остался старый тик
 %% с именем, которого уже нет, поэтому будем засовывать данные в буфер, забивая на взможные ошибки
-handle_cast({add_recent_candle, Candle = #candle{name = Instr}}, State) ->
+handle_call({add_recent_candle, Candle = #candle{name = Instr}}, _From, State) ->
   ets_limbuffer:maybe_push(Candle, State#state.storage, Instr, buf_counter_name(Instr), State#state.depth),
-  {noreply, State}.
-
-%%--------------------------------------------------------------------
+  {reply, ok, State};
+%%---
 handle_call({set_instrs, _}, _From, State = #state{buffer_on_the_fly = true}) ->
   ok = ets_limbuffer:delete_buffers(State#state.storage),
   {reply, ok, State};
@@ -119,6 +118,7 @@ handle_call({set_instrs, Instrs}, _From, State) ->
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
+handle_cast(_Request, _State) -> exit(handle_cast_unsupported).
 handle_info(_Info, _State) -> exit(handle_info_unsupported).
 
 %%--------------------------------------------------------------------
