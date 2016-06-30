@@ -282,7 +282,7 @@ log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
 log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
-active_fires_fun(InstrName, TickCandleTime) -> patterns_executor:check_patterns(InstrName, TickCandleTime).
+active_fires_fun(InstrName, TickCandleTime) -> patterns_executor:check_patterns({tick, InstrName}, TickCandleTime).
 inactive_fires_fun(_, _) -> ok.
 
 %%--------------------------------------------------------------------
@@ -293,9 +293,9 @@ universal_to_candle_time(State) ->
 %%--------------------------------------------------------------------
 refire_on_flush_candles(State) ->
   CurrentTime = universal_to_candle_time(State),
-  lager:info("CHECKING_FLUSH_PATTERNS at ~p", [CurrentTime]),
+  lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
-    fun(#candle{name = N}, _) -> patterns_executor:check_patterns(N, CurrentTime) end,
+    fun(#candle{name = N}, _) -> patterns_executor:check_patterns({candle, N}, CurrentTime) end,
     undefined,
     State#state.tid),
   lager:info("CHECKING_FLUSH_PATTERNS completed"),

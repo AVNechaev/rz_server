@@ -77,7 +77,7 @@ handle_call({delete_pattern, PatId}, _From, State) ->
   {reply, ok, State#state{patterns = NewPatterns}}.
 
 %%--------------------------------------------------------------------
-handle_cast({check_patterns, Instr, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
+handle_cast({check_patterns, {From, Instr}, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
   F =
     fun(#pattern_data{id = Id, f = PatFun}) ->
       FiresId = ?FIRES_ID(Id, Instr),
@@ -85,7 +85,7 @@ handle_cast({check_patterns, Instr, UTCCandlesTime}, State = #state{tid = Tid, r
         [#fires_data{last_fired = LF}] when UTCCandlesTime - LF > Timeout ->
           case PatFun(Instr) of
             true ->
-              on_fired(Id, Instr, UTCCandlesTime, State),
+              on_fired(Id, {From, Instr}, UTCCandlesTime, State),
               true = ets:update_element(Tid, FiresId, [{#fires_data.last_fired, UTCCandlesTime}]),
               ok;
             false ->
@@ -95,7 +95,7 @@ handle_cast({check_patterns, Instr, UTCCandlesTime}, State = #state{tid = Tid, r
         [] ->
           case PatFun(Instr) of
             true ->
-              on_fired(Id, Instr, UTCCandlesTime, State),
+              on_fired(Id, {From, Instr}, UTCCandlesTime, State),
               true = ets:insert_new(Tid, #fires_data{id = FiresId, last_fired = UTCCandlesTime}),
               ok;
             false ->
@@ -116,7 +116,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-on_fired(PatIdx, Instr, UTCCandlesTime, _State) ->
-  lager:info("PATTERN ~p fired for ~p at ~p", [PatIdx, Instr, UTCCandlesTime]),
+on_fired(PatIdx, {From, Instr}, UTCCandlesTime, _State) ->
+  lager:info("PATTERN ~p fired for {~p,~p} at ~p", [PatIdx, From, Instr, UTCCandlesTime]),
   fires_cached_store:store(PatIdx, Instr, UTCCandlesTime),
   ok.
