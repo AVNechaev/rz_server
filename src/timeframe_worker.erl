@@ -137,7 +137,6 @@ handle_info({timeout, TRef, reinit}, State = #state{current_tref = OtherTRef}) w
   {noreply, State};
 handle_info({timeout, _, reinit}, State) ->
   flush_candles(State),
-  refire_on_flush_candles(State),
   ets:delete_all_objects(State#state.tid),
   LastFlushed = State#state.candles_start + State#state.duration, %% по идее не должно быть UNDEFINED, т.к. таймер взводится в reinit, но на всякий случай
   {noreply, log_expired_ticks(State#state{empty = true, candles_last_flushed = LastFlushed}, ?LOG_ALL_EXPIRED_TICKS)}.
@@ -222,6 +221,7 @@ flush_candles(State) ->
       online_history_worker:add_recent_candle(State#state.history_name, C)
     end || C <- Data
   ],
+  refire_on_flush_candles(State),
   ok = candles_cached_store:store(State#state.name, DT, Data).
 
 %%--------------------------------------------------------------------
