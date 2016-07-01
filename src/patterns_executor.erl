@@ -48,7 +48,7 @@ delete_pattern(PatId) -> gen_server:call(?SERVER, {delete_pattern, PatId}).
 
 %%--------------------------------------------------------------------
 %% см timeframe_worker:universal_to_candle_time()
--spec check_patterns(InstrName :: instr_name(), UniversalCandleTime :: pos_integer()) -> ok.
+-spec check_patterns(Instr :: pattern_fun_arg(), UniversalCandleTime :: pos_integer()) -> ok.
 check_patterns(Instr, UniversalCandleTime) -> gen_server:cast(?SERVER, {check_patterns, Instr, UniversalCandleTime}).
 
 %%%===================================================================
@@ -63,14 +63,26 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({load_pattern, Pat}, _From, State) ->
   try
-    {ok, Fun} = compile_pattern(Pat),
-    AnchoredFun = fun(Instr) ->
-      try
-        Fun(Instr)
-      catch
-        ?NO_DATA -> false
-      end
-    end,
+    {ok, {Fun, Ctx}} = compile_pattern(Pat),
+    AnchoredFun =
+      fun({tick, Instr}) ->
+        case proplists:get_value(use_current_candle, Ctx, false) of
+          true ->
+            try
+              Fun(Instr)
+            catch
+              ?NO_DATA -> false
+            end;
+          false ->
+            false
+        end;
+        ({candle, Instr}) ->
+          try
+            Fun(Instr)
+          catch
+            ?NO_DATA -> false
+          end
+      end,
     pat_exec_worker:load_pattern(elect(State), Pat, AnchoredFun),
     {reply, ok, State}
   catch
@@ -105,116 +117,134 @@ compile_pattern(PT) when is_binary(PT) -> compile_pattern(binary_to_list(PT));
 compile_pattern(PatternText) ->
   {ok, Tokens, _} = patterns_lex:string(PatternText),
   {ok, ParsedPattern} = patterns_parser:parse(Tokens),
-  {ok, transform_pattern(ParsedPattern)}.
+  {ok, transform_pattern(ParsedPattern, [])}.
 
 %%--------------------------------------------------------------------
--spec transform_pattern(tuple()) -> pattern_fun().
-transform_pattern({{two_op_logic, _, Operator}, LeftOperand, RightOperand}) ->
+-spec transform_pattern(tuple(), list()) -> {pattern_fun(), list()}.
+transform_pattern({{two_op_logic, _, Operator}, LeftOperand, RightOperand}, Ctx) ->
   lager:info("Pattern operator ~p", [Operator]),
-  LeftFun = transform_pattern(LeftOperand),
-  RightFun = transform_pattern(RightOperand),
+  {LeftFun, LCtx} = transform_pattern(LeftOperand, Ctx),
+  {RightFun, NewCtx} = transform_pattern(RightOperand, LCtx),
   case Operator of
-    op_and -> fun(Instr) -> LeftFun(Instr) andalso RightFun(Instr) end;
-    op_or -> fun(Instr) -> LeftFun(Instr) orelse RightFun(Instr) end
+    op_and -> {fun(Instr) -> LeftFun(Instr) andalso RightFun(Instr) end, NewCtx};
+    op_or -> {fun(Instr) -> LeftFun(Instr) orelse RightFun(Instr) end, NewCtx}
   end;
 %%---
-transform_pattern({{comparator, _, Operator}, LeftOperand, RightOperand}) ->
+transform_pattern({{comparator, _, Operator}, LeftOperand, RightOperand}, Ctx) ->
   lager:info("Pattern operator \"~s\"", [Operator]),
-  LeftFun = transform_pattern(LeftOperand),
-  RightFun = transform_pattern(RightOperand),
+  {LeftFun, LCtx} = transform_pattern(LeftOperand, Ctx),
+  {RightFun, NewCtx} = transform_pattern(RightOperand, LCtx),
   case Operator of
-    "=" -> fun(Instr) -> LeftFun(Instr) == RightFun(Instr) end;
-    ">" -> fun(Instr) -> LeftFun(Instr) > RightFun(Instr) end;
-    "<" -> fun(Instr) -> LeftFun(Instr) < RightFun(Instr) end;
-    ">=" -> fun(Instr) -> LeftFun(Instr) >= RightFun(Instr) end;
-    "<=" -> fun(Instr) -> LeftFun(Instr) =< RightFun(Instr) end
+    "=" -> {fun(Instr) -> LeftFun(Instr) == RightFun(Instr) end, NewCtx};
+    ">" -> {fun(Instr) -> LeftFun(Instr) > RightFun(Instr) end, NewCtx};
+    "<" -> {fun(Instr) -> LeftFun(Instr) < RightFun(Instr) end, NewCtx};
+    ">=" -> {fun(Instr) -> LeftFun(Instr) >= RightFun(Instr) end, NewCtx};
+    "<=" -> {fun(Instr) -> LeftFun(Instr) =< RightFun(Instr) end, NewCtx}
   end;
 %%---
-transform_pattern({{two_op_arith, _, Operator}, LeftOperand, RightOperand}) ->
+transform_pattern({{two_op_arith, _, Operator}, LeftOperand, RightOperand}, Ctx) ->
   lager:info("Pattern operator ~p", [Operator]),
-  LeftFun = transform_pattern(LeftOperand),
-  RightFun = transform_pattern(RightOperand),
+  {LeftFun, LCtx} = transform_pattern(LeftOperand, Ctx),
+  {RightFun, NewCtx} = transform_pattern(RightOperand, LCtx),
   case Operator of
     op_rem ->
-      fun(Instr) ->
-        Left = LeftFun(Instr),
-        Right = RightFun(Instr),
-        Left - trunc(Left / Right) * Right
-      end;
-    op_plus -> fun(Instr) -> LeftFun(Instr) + RightFun(Instr) end;
-    op_minus -> fun(Instr) -> LeftFun(Instr) - RightFun(Instr) end
+      {
+        fun(Instr) ->
+          Left = LeftFun(Instr),
+          Right = RightFun(Instr),
+          Left - trunc(Left / Right) * Right
+        end,
+        NewCtx
+      };
+    op_plus -> {fun(Instr) -> LeftFun(Instr) + RightFun(Instr) end, NewCtx};
+    op_minus -> {fun(Instr) -> LeftFun(Instr) - RightFun(Instr) end, NewCtx}
   end;
 %%---
-transform_pattern({constant, _, Value}) ->
+transform_pattern({constant, _, Value}, Ctx) ->
   lager:info("Pattern operand CONST=~p", [Value]),
-  fun(_) -> Value end;
+  {fun(_) -> Value end, Ctx};
 %%---
-transform_pattern({instr, Line, Instr}) when is_list(Instr) -> transform_pattern({instr, Line, list_to_binary(Instr)});
-transform_pattern({instr, Line, Instr}) ->
+transform_pattern({instr, Line, Instr}, Ctx) when is_list(Instr) ->
+  transform_pattern({instr, Line, list_to_binary(Instr)}, Ctx);
+transform_pattern({instr, Line, Instr}, Ctx) ->
   case binary:split(Instr, <<"#">>) of
-    [<<"Instr">>, Data] -> transform_instr(Line, Data, ordinal_instr);
-    [?SNP_PREFIX, Data] -> transform_instr(Line, Data, snp_instr)
+    [<<"Instr">>, Data] -> transform_instr(Line, Data, ordinal_instr, Ctx);
+    [?SNP_PREFIX, Data] -> transform_instr(Line, Data, snp_instr, Ctx)
   end.
 
 %%--------------------------------------------------------------------
--spec transform_instr(Line :: non_neg_integer(), Data :: binary(), InstrType :: ordinal_instr | snp_instr) -> pattern_fun().
-transform_instr(Line, <<"Price">>, InstrType) ->
+-spec transform_instr(Line :: non_neg_integer(), Data :: binary(), InstrType :: ordinal_instr | snp_instr, Ctx :: list()) -> {pattern_fun(), list()}.
+transform_instr(Line, <<"Price">>, InstrType, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, InstrType);
+  transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, InstrType, Ctx);
 %%---
-transform_instr(Line, <<"Bid">>, InstrType) ->
+transform_instr(Line, <<"Bid">>, InstrType, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#BID">>, InstrType);
+  transform_instr(Line, <<DefFrame/binary, ",1#BID">>, InstrType, Ctx);
 %%---
-transform_instr(Line, <<"Ask">>, InstrType) ->
+transform_instr(Line, <<"Ask">>, InstrType, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#ASK">>, InstrType);
+  transform_instr(Line, <<DefFrame/binary, ",1#ASK">>, InstrType, Ctx);
 %%---
-transform_instr(_, Data, InstrType) ->
+transform_instr(_, Data, InstrType, Ctx) ->
   [FrameOff, Val] = binary:split(Data, <<"#">>),
   [Frame, Offset] = binary:split(FrameOff, <<",">>),
   FrameName = proplists:get_value(Frame, iqfeed_util:get_env(rz_server, pattern_names_to_frames)),
   CurStorageName = timeframe_worker:storage_name(FrameName),
   HistStorageName = online_history_worker:storage_name(FrameName),
   Length = proplists:get_value(history_depth, proplists:get_value(FrameName, iqfeed_util:get_env(rz_server, frames))),
-  GetCandleFun = case Offset of
-                   <<"1">> ->
-                     lager:info("Pattern operand get_current_candle(~p, Instr)", [CurStorageName]),
-                     fun(Instr) -> timeframe_worker:get_current_candle(Instr, CurStorageName) end;
-                   _ ->
-                     OffInt = binary_to_integer(Offset) - 2,
-                     lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
-                     fun(Instr) ->
-                       online_history_worker:get_candle(HistStorageName, Instr, Length, OffInt)
-                     end
-                 end,
-  ExtrFun = case Val of
-              <<"OPEN">> -> fun(#candle{open = V}) -> V end;
-              <<"CLOSE">> -> fun(#candle{close = V}) -> V end;
-              <<"HIGH">> -> fun(#candle{high = V}) -> V end;
-              <<"LOW">> -> fun(#candle{low = V}) -> V end;
-              <<"PRICE">> -> fun(#candle{close = V}) -> V end;
-              <<"BID">> -> fun(#candle{bid = V}) -> V end;
-              <<"ASK">> -> fun(#candle{ask = V}) -> V end;
-              <<"VOLUME">> -> fun(#candle{vol = V}) -> V end
-            end,
+  {GetCandleFun, NewCtx} =
+    case Offset of
+      <<"1">> ->
+        lager:info("Pattern operand get_current_candle(~p, Instr)", [CurStorageName]),
+        UpdatedCtx = case proplists:get_value(use_current_candle, Ctx, undefined) of
+                       true -> Ctx;
+                       undefined -> Ctx ++ [{use_current_candle, true}]
+                     end,
+        {fun(Instr) ->
+          timeframe_worker:get_current_candle(Instr, CurStorageName) end, UpdatedCtx};
+      _ ->
+        OffInt = binary_to_integer(Offset) - 2,
+        lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
+        {
+          fun(Instr) ->
+            online_history_worker:get_candle(HistStorageName, Instr, Length, OffInt)
+          end,
+          Ctx}
+    end,
+  ExtrFun =
+    case Val of
+      <<"OPEN">> -> fun(#candle{open = V}) -> V end;
+      <<"CLOSE">> -> fun(#candle{close = V}) -> V end;
+      <<"HIGH">> -> fun(#candle{high = V}) -> V end;
+      <<"LOW">> -> fun(#candle{low = V}) -> V end;
+      <<"PRICE">> -> fun(#candle{close = V}) -> V end;
+      <<"BID">> -> fun(#candle{bid = V}) -> V end;
+      <<"ASK">> -> fun(#candle{ask = V}) -> V end;
+      <<"VOLUME">> -> fun(#candle{vol = V}) -> V end
+    end,
   case InstrType of
     ordinal_instr ->
-      fun(Instr) ->
-        case GetCandleFun(Instr) of
-          {ok, C} -> ExtrFun(C);
-          {error, not_found} -> throw(?NO_DATA)
-        end
-      end;
+      {
+        fun(Instr) ->
+          case GetCandleFun(Instr) of
+            {ok, C} -> ExtrFun(C);
+            {error, not_found} -> throw(?NO_DATA)
+          end
+        end,
+        NewCtx
+      };
     snp_instr ->
       SNPName = iqfeed_util:get_env(rz_server, snp_instr_name),
       SNPNameString = binary_to_list(SNPName),
-      fun(Name) when Name == SNPName orelse Name == SNPNameString ->
-        case GetCandleFun(SNPName) of
-          {ok, C} -> ExtrFun(C);
-          {error, not_found} -> throw(?NO_DATA)
-        end;
-        (_) -> throw(?NO_DATA)
-      end
+      {
+        fun(Name) when Name == SNPName orelse Name == SNPNameString ->
+          case GetCandleFun(SNPName) of
+            {ok, C} -> ExtrFun(C);
+            {error, not_found} -> throw(?NO_DATA)
+          end;
+          (_) -> throw(?NO_DATA)
+        end,
+        NewCtx
+      }
   end.
-

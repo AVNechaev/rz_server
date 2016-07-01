@@ -23,7 +23,8 @@
   md5 :: binary()
 }).
 
--type pattern_fun() :: fun((Instr :: instr_name()) -> ok).
+-type pattern_fun_arg() :: {tick, instr_name()} | {candle, instr_name()}.
+-type pattern_fun() :: fun((Instr :: pattern_fun_arg) -> ok).
 -type stock_open_fun() :: fun(() -> non_neg_integer()).
 
 -define(SNP_PREFIX, <<"SNP">>). %% префикс в паттерне для использования SNP500

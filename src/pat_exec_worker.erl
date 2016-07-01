@@ -64,7 +64,7 @@ load_pattern(ThisPid, PatDesc, PatFun) -> gen_server:call(ThisPid, {load_pattern
 delete_pattern(ThisPid, PatId) -> gen_server:call(ThisPid, {delete_pattern, PatId}).
 
 %%--------------------------------------------------------------------
--spec check_patterns(ThisPid :: pid(), Instr :: instr_name(), UTCCandlesTime :: pos_integer()) -> ok.
+-spec check_patterns(ThisPid :: pid(), Instr :: pattern_fun_arg(), UTCCandlesTime :: pos_integer()) -> ok.
 check_patterns(ThisPid, Instr, UTCCandlesTime) -> gen_server:cast(ThisPid, {check_patterns, Instr, UTCCandlesTime}).
 
 %%--------------------------------------------------------------------
@@ -77,15 +77,15 @@ handle_call({delete_pattern, PatId}, _From, State) ->
   {reply, ok, State#state{patterns = NewPatterns}}.
 
 %%--------------------------------------------------------------------
-handle_cast({check_patterns, {From, Instr}, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
+handle_cast({check_patterns, Instr = {_, InstrName}, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
   F =
     fun(#pattern_data{id = Id, f = PatFun}) ->
-      FiresId = ?FIRES_ID(Id, Instr),
+      FiresId = ?FIRES_ID(Id, InstrName),
       case ets:lookup(Tid, FiresId) of
         [#fires_data{last_fired = LF}] when UTCCandlesTime - LF > Timeout ->
           case PatFun(Instr) of
             true ->
-              on_fired(Id, {From, Instr}, UTCCandlesTime, State),
+              on_fired(Id, Instr, UTCCandlesTime, State),
               true = ets:update_element(Tid, FiresId, [{#fires_data.last_fired, UTCCandlesTime}]),
               ok;
             false ->
@@ -95,7 +95,7 @@ handle_cast({check_patterns, {From, Instr}, UTCCandlesTime}, State = #state{tid 
         [] ->
           case PatFun(Instr) of
             true ->
-              on_fired(Id, {From, Instr}, UTCCandlesTime, State),
+              on_fired(Id, Instr, UTCCandlesTime, State),
               true = ets:insert_new(Tid, #fires_data{id = FiresId, last_fired = UTCCandlesTime}),
               ok;
             false ->
