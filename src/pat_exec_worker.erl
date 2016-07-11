@@ -52,7 +52,7 @@ start_link() -> gen_server:start_link(?MODULE, [], []).
 %%%===================================================================
 init([]) ->
   Tid = ets:new(?MODULE, [private, set, {keypos, #fires_data.id}]),
-  RefireTimeout = proplists:get_value(refire_timeout, iqfeed_util:get_env(rz_server, patterns_executor)),
+  RefireTimeout = proplists:get_value(refire_timeout, rz_util:get_env(rz_server, patterns_executor)),
   {ok, #state{tid = Tid, patterns = [], refire_timeout = RefireTimeout}}.
 
 %%--------------------------------------------------------------------

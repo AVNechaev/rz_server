@@ -55,7 +55,7 @@ check_patterns(Instr, UniversalCandleTime) -> gen_server:cast(?SERVER, {check_pa
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
-  Cfg = iqfeed_util:get_env(rz_server, patterns_executor),
+  Cfg = rz_util:get_env(rz_server, patterns_executor),
   Workers = proplists:get_value(workers, Cfg),
   PIDs = [begin {ok, P} = pat_exec_worker:start_link(), P end || _ <- lists:seq(1, Workers)],
   {ok, #state{workers = PIDs}}.
@@ -175,24 +175,24 @@ transform_pattern({instr, Line, Instr}, Ctx) ->
 %%--------------------------------------------------------------------
 -spec transform_instr(Line :: non_neg_integer(), Data :: binary(), InstrType :: ordinal_instr | snp_instr, Ctx :: list()) -> {pattern_fun(), list()}.
 transform_instr(Line, <<"Price">>, InstrType, Ctx) ->
-  DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
+  DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
   transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, InstrType, Ctx);
 %%---
 transform_instr(Line, <<"Bid">>, InstrType, Ctx) ->
-  DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
+  DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
   transform_instr(Line, <<DefFrame/binary, ",1#BID">>, InstrType, Ctx);
 %%---
 transform_instr(Line, <<"Ask">>, InstrType, Ctx) ->
-  DefFrame = proplists:get_value(frame_for_current_candle, iqfeed_util:get_env(rz_server, patterns_executor)),
+  DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
   transform_instr(Line, <<DefFrame/binary, ",1#ASK">>, InstrType, Ctx);
 %%---
 transform_instr(_, Data, InstrType, Ctx) ->
   [FrameOff, Val] = binary:split(Data, <<"#">>),
   [Frame, Offset] = binary:split(FrameOff, <<",">>),
-  FrameName = proplists:get_value(Frame, iqfeed_util:get_env(rz_server, pattern_names_to_frames)),
+  FrameName = proplists:get_value(Frame, rz_util:get_env(rz_server, pattern_names_to_frames)),
   CurStorageName = timeframe_worker:storage_name(FrameName),
   HistStorageName = online_history_worker:storage_name(FrameName),
-  Length = proplists:get_value(history_depth, proplists:get_value(FrameName, iqfeed_util:get_env(rz_server, frames))),
+  Length = proplists:get_value(history_depth, proplists:get_value(FrameName, rz_util:get_env(rz_server, frames))),
   {GetCandleFun, NewCtx} =
     case Offset of
       <<"1">> ->
@@ -235,7 +235,7 @@ transform_instr(_, Data, InstrType, Ctx) ->
         NewCtx
       };
     snp_instr ->
-      SNPName = iqfeed_util:get_env(rz_server, snp_instr_name),
+      SNPName = rz_util:get_env(rz_server, snp_instr_name),
       SNPNameString = binary_to_list(SNPName),
       {
         fun(Name) when Name == SNPName orelse Name == SNPNameString ->

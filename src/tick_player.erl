@@ -21,7 +21,7 @@ run(Filename) ->
   run(Filename, D).
 run(FileName, Date) ->
   {ok, Ticks} = file:consult(FileName),
-  Names = [timeframe_worker:reg_name(N) || {N, _} <- iqfeed_util:get_env(rz_server, frames)],
+  Names = [timeframe_worker:reg_name(N) || {N, _} <- rz_util:get_env(rz_server, frames)],
   TickFun = fun({tick, I, LP, LV, T, B, A}) ->
     Secs = calendar:datetime_to_gregorian_seconds({Date, T}),
     Tick = #tick{name = I, ask = A, bid = B, last_price = LP, last_vol = LV, time = Secs},
