@@ -38,6 +38,7 @@ process_put(ReqData, Context) ->
       integer_to_binary(Duplicates),
       "}"
     ],
+    lager:info("Load instruments status: ~p", [Resp]),
     {{halt, 200}, wrq:set_resp_body(Resp, ReqData), Context}
   catch
     M:E ->
