@@ -15,17 +15,16 @@
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
 
 %%--------------------------------------------------------------------
--spec load_instrs(Instrs :: [instr_name()]) -> ok.
+-spec load_instrs(Instrs :: [instr_name()]) -> {Added :: non_neg_integer(), Duplicates :: non_neg_integer()}.
 load_instrs(Instrs) ->
   [
     online_history_worker:set_instrs(online_history_worker:reg_name(N), Instrs)
     || {N, _} <- rz_util:get_env(rz_server, frames)
   ],
-  iql1_conn:set_instrs(Instrs),
-  ok.
+  iql1_conn:set_instrs(Instrs).
 
 %%--------------------------------------------------------------------
--spec load_instrs_from_file(Filename :: file:filename()) -> ok.
+-spec load_instrs_from_file(Filename :: file:filename()) -> {Added :: non_neg_integer(), Duplicates :: non_neg_integer()}.
 load_instrs_from_file(Filename) ->
   {ok, I} = rz_util:load_instr_csv(Filename, 1, rz_util:get_env(iqfeed_client, instr_defaults)),
   load_instrs(I).
