@@ -13,7 +13,6 @@
 -export([
   init/1,
   allowed_methods/2,
-  content_types_provided/2,
   content_types_accepted/2,
   process_put/2]).
 
@@ -24,7 +23,6 @@
 
 init([]) -> {ok, undefined}.
 allowed_methods(ReqData, Context) -> {['PUT'], ReqData, Context}.
-content_types_provided(ReqData, Context) -> {[{"application/json", instr_list}], ReqData, Context}.
 content_types_accepted(ReqData, Context) -> {[{"application/json", process_put}], ReqData, Context}.
 
 %%--------------------------------------------------------------------
