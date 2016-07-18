@@ -25,7 +25,7 @@
 init([]) -> {ok, undefined}.
 allowed_methods(ReqData, Context) -> {['PUT'], ReqData, Context}.
 content_types_provided(ReqData, Context) -> {[{"application/json", instr_list}], ReqData, Context}.
-content_types_accepted(ReqData, Context) -> {[{"application/json", process_post}], ReqData, Context}.
+content_types_accepted(ReqData, Context) -> {[{"application/json", process_put}], ReqData, Context}.
 
 %%--------------------------------------------------------------------
 process_put(ReqData, Context) ->
