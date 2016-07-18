@@ -32,14 +32,15 @@ process_put(ReqData, Context) ->
     Instrs = [V || {struct, [{<<"name">>, V}]} <- Raw],
     {Added, Duplicates} = rz_ifc:load_instrs(Instrs),
     Resp = [
-      "{""added"":",
+      "{\"added\":",
       integer_to_binary(Added),
-      """duplicates"":",
+      ",\"duplicates\":",
       integer_to_binary(Duplicates),
       "}"
     ],
     lager:info("Load instruments status: ~p", [Resp]),
-    {{halt, 200}, wrq:set_resp_body(Resp, ReqData), Context}
+    RespData = wrq:set_resp_header("Content-Type", "application/json", ReqData),
+    {{halt, 200}, wrq:set_resp_body(Resp, RespData), Context}
   catch
     M:E ->
       lager:warning("HTTP handler error: ~p:~p; ~p", [M, E, erlang:get_stacktrace()]),
