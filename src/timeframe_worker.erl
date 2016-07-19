@@ -43,7 +43,8 @@
   name_bin :: binary(),
   history_name :: atom(),
   reinit_timeout :: non_neg_integer(),
-  epoch_start :: non_neg_integer() %% время в секундах 1.01.1970
+  epoch_start :: non_neg_integer(), %% время в секундах 1.01.1970
+  propagate_to_sma :: boolean()
 }).
 
 -type frame_params() :: list().
@@ -100,7 +101,8 @@ init([Name, Params]) ->
       name_bin = atom_to_binary(Name, latin1),
       history_name = online_history_worker:reg_name(Name),
       reinit_timeout = proplists:get_value(reinit_timeout, Params),
-      epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
+      epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}}),
+      propagate_to_sma = proplists:get_value(propagate_to_sma, Params, false)
     }}.
 
 %%--------------------------------------------------------------------
@@ -218,6 +220,10 @@ flush_candles(State) ->
       lager:info(
         "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
         [State#state.name, D, M, Y, H, Mi, S, C#candle.name, C#candle.open, C#candle.close, C#candle.high, C#candle.low, C#candle.vol]),
+      case State#state.propagate_to_sma of
+        true -> sma_store:add_daily_candle(C);
+        false -> ok
+      end,
       online_history_worker:add_recent_candle(State#state.history_name, C)
     end || C <- Data
   ],

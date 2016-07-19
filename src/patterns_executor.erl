@@ -164,6 +164,9 @@ transform_pattern({constant, _, Value}, Ctx) ->
   lager:info("Pattern operand CONST=~p", [Value]),
   {fun(_) -> Value end, Ctx};
 %%---
+transform_pattern({instr, _Line, {sma, SMAType}}, Ctx) ->
+  {fun(Instr) -> sma_store:get_sma(Instr, SMAType) end, Ctx};
+%%---
 transform_pattern({instr, Line, Instr}, Ctx) when is_list(Instr) ->
   transform_pattern({instr, Line, list_to_binary(Instr)}, Ctx);
 transform_pattern({instr, Line, Instr}, Ctx) ->
