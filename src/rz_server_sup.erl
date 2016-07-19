@@ -112,8 +112,7 @@ init([]) ->
       {port, rz_util:get_env(rz_server, http_port)},
       {backlog, 1000},
       {dispatch, [
-        {["nyse", "instrs"], web_instruments, []}, %% POST, PUT, GET
-        {["nyse", "instrs", instr], web_single_instrument, []}, %% DELETE
+        {["nyse", "instrs"], web_instruments, []}, %%PUT
         {["patterns"], web_patterns, []}, %% POST, GET
         {["patterns", pattern_id], web_single_pattern, []} %% PUT, DELETE
       ]}

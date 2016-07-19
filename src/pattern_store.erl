@@ -111,7 +111,7 @@ handle_call({replace_pattern, Id, NewText}, _From, State) ->
         ok ->
           emysql:execute(
             mysql_config_store,
-            <<"update PATTERNS set expr='", NewText/binary,"' when ID=", IdBin/binary>>),
+            <<"update PATTERNS set expr='", NewText/binary,"' where ID=", IdBin/binary>>),
           {reply, ok, State};
         {error, What} ->
           lager:warning("An error occured when adding a pattern: ~p", [What]),
