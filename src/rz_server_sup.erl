@@ -17,7 +17,24 @@
 start_link() ->
   ok = emysql:add_pool(mysql_candles_store, rz_util:get_env(rz_server, mysql_candles_store)),
   ok = emysql:add_pool(mysql_config_store, rz_util:get_env(rz_server, mysql_config_store)),
-  supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+  Ret = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+  SMAConf = rz_util:get_env(rz_server, sma_store),
+  MaxKnownF =
+    fun({_, I}, Acc) when I > Acc -> I;
+      (_, Acc) -> Acc
+    end,
+  MaxDepth = lists:foldl(MaxKnownF, 0, proplists:get_value(SMAConf, known)),
+  HistoryF =
+    fun({data, _, Candle}) -> sma_store:add_daily_candle(Candle);
+      (_) -> ok
+    end,
+  {ok, Instr} = rz_util:load_instr_csv(
+    rz_util:get_env(iqfeed_client, instr_file),
+    rz_util:get_env(iqfeed_client, instr_file_header),
+    rz_util:get_env(iqfeed_client, instr_defaults)
+  ),
+  daily_history_getter:get_history_for(Instr, MaxDepth, HistoryF),
+  Ret.
 
 %% ===================================================================
 %% Supervisor callbacks
