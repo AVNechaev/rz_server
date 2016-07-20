@@ -8,6 +8,12 @@
 %% Supervisor callbacks
 -export([init/1]).
 
+%% при запросе истории для заполнения SMA могут быть пропуски
+%% по датам из-за выходных и каникул; поэтому берем существенно
+%% большую глубину поиска, а ненужные старые данные будут
+%% вытеснены из очереди внутри SMA_STORE
+-define(DEPTH_WITH_VACATIONS(Depth), trunc(Depth * 1.5)).
+
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
 -compile([{parse_transform, lager_transform}]).
 %% ===================================================================
@@ -33,7 +39,7 @@ start_link() ->
     rz_util:get_env(iqfeed_client, instr_file_header),
     rz_util:get_env(iqfeed_client, instr_defaults)
   ),
-  daily_history_getter:get_history_for(Instr, MaxDepth, HistoryF),
+  daily_history_getter:get_history_for(Instr, ?DEPTH_WITH_VACATIONS(MaxDepth), HistoryF),
   Ret.
 
 %% ===================================================================
