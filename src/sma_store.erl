@@ -54,7 +54,7 @@ get_sma(Instr, Type) ->
 init([]) ->
   ets:new(?STORE_NAME, [protected, named_table, set, {read_concurrency, true}]),
   SMAConf = rz_util:get_env(rz_server, sma_store),
-  {ok, #state{known_smas = proplists:get_value(SMAConf, known)}}.
+  {ok, #state{known_smas = proplists:get_value(known, SMAConf)}}.
 
 %%--------------------------------------------------------------------
 handle_call({add_daily_candle, Candle}, _From, State = #state{known_smas = Known}) ->

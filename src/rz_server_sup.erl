@@ -23,7 +23,7 @@ start_link() ->
     fun({_, I}, Acc) when I > Acc -> I;
       (_, Acc) -> Acc
     end,
-  MaxDepth = lists:foldl(MaxKnownF, 0, proplists:get_value(SMAConf, known)),
+  MaxDepth = lists:foldl(MaxKnownF, 0, proplists:get_value(known, SMAConf)),
   HistoryF =
     fun({data, _, Candle}) -> sma_store:add_daily_candle(Candle);
       (_) -> ok
