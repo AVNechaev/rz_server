@@ -25,7 +25,7 @@ start_link() ->
     end,
   MaxDepth = lists:foldl(MaxKnownF, 0, proplists:get_value(known, SMAConf)),
   HistoryF =
-    fun({data, _, Candle}) -> sma_store:add_daily_candle(Candle);
+    fun({data, {_, Candle}}) -> sma_store:add_daily_candle(Candle);
       (_) -> ok
     end,
   {ok, Instr} = rz_util:load_instr_csv(
