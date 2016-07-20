@@ -85,7 +85,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-hist_fun(_Self, ReqFun, Data = {data, _, _}) -> ReqFun(Data);
+hist_fun(_Self, ReqFun, Data = {data, {_, _}}) -> ReqFun(Data);
 hist_fun(Self, ReqFun, ErrorOrEndOfData) ->
   ReqFun(ErrorOrEndOfData),
   gen_server:cast(Self, activate).
