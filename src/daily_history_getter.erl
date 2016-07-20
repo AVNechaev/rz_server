@@ -66,7 +66,7 @@ handle_cast(activate, State = #state{cur_req = #req{instrs = []}}) ->
   {noreply, State#state{cur_req = undefined}};
 handle_cast(activate, State = #state{cur_req = #req{instrs = [H | T], f = F, depth = D}}) ->
   Self = self(),
-  case iql2_conn:get_history(H, D, fun(D) -> hist_fun(Self, F, D) end) of
+  case iql2_conn:get_history(H, D, fun(Data) -> hist_fun(Self, F, Data) end) of
     ok ->
       NewReq = (State#state.cur_req)#req{instrs = T},
       {noreply, State#state{cur_req = NewReq}};
