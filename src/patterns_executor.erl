@@ -165,7 +165,15 @@ transform_pattern({constant, _, Value}, Ctx) ->
   {fun(_) -> Value end, Ctx};
 %%---
 transform_pattern({instr, _Line, {sma, SMAType}}, Ctx) ->
-  {fun(Instr) -> sma_store:get_sma(Instr, SMAType) end, Ctx};
+  lager:info("Pattern operand get_SMA (~p)", [SMAType]),
+  {
+    fun(Instr) ->
+      case sma_store:get_sma(Instr, SMAType) of
+        {ok, V} -> V;
+        {error, not_found} -> throw(?NO_DATA)
+      end
+    end,
+    Ctx};
 %%---
 transform_pattern({instr, Line, Instr}, Ctx) when is_list(Instr) ->
   transform_pattern({instr, Line, list_to_binary(Instr)}, Ctx);

@@ -81,16 +81,20 @@ process_single(#candle{name = Instr, close = Data}, {SmaType, Depth}) ->
         queue:new();
       [{_, D}] -> D
     end,
-  NewQ =
+  {Dropped, NewQ} =
     case queue:len(Q) of
-      L when L == Depth ->
-        {{value, Dropped}, Q1} = queue:out(Q),
+      Depth ->
+        {{value, Drop}, Q1} = queue:out(Q),
         NQ = queue:in(Data, Q1),
-        recalc_sma(Instr, Dropped, NQ, SmaType),
-        NQ;
+        {Drop, NQ};
       LM when LM < Depth ->
-        queue:in(Data, Q)
+        {0, queue:in(Data, Q)}
     end,
+  case queue:len(Q) of
+    Depth ->
+      recalc_sma(Instr, Dropped, NewQ, SmaType);
+    _ -> ok
+  end,
   true = ets:update_element(?STORE_NAME, Key, {2, NewQ}),
   ok.
 
@@ -100,7 +104,7 @@ recalc_sma(Instr, Dropped, NQ, SmaType) ->
   Key = ?SMA_KEY(Instr, SmaType),
   Res =
     case ets:lookup(?STORE_NAME, Key) of
-      [] -> lists:foldl(fun(D, Acc) -> Acc + D/L end, 0, queue:to_list(NQ));
+      [] -> lists:foldl(fun(D, Acc) -> Acc + D / L end, 0, queue:to_list(NQ));
       [{_, V}] -> V + (queue:get_r(NQ) - Dropped) / L
     end,
   ets:insert(?STORE_NAME, {Key, Res}).
