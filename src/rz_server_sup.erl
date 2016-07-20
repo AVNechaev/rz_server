@@ -94,6 +94,10 @@ init([]) ->
     ]},
     permanent, brutal_kill, worker, [candles_cached_store]},
 
+  SMAStore = {sma_store,
+    {sma_store, start_link, []},
+    permanent, brutal_kill, worker, [sma_store]},
+
   PatternsExecutor = {patterns_executor,
     {patterns_executor, start_link, []},
     permanent, brutal_kill, worker, [patterns_executor]},
@@ -132,6 +136,7 @@ init([]) ->
         Frames,
         Cache,
         FiresCache,
+        SMAStore,
         PatternsExecutor,
         PatternsStore,
         IQFeed,
