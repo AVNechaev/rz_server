@@ -119,6 +119,10 @@ init([]) ->
     ]]},
     permanent, brutal_kill, worker, dynamic},
 
+  DailyHistory = {daily_history,
+    {daily_history_getter, start_link, []},
+    permanent, brutal_kill, worker, [daily_history_getter]},
+
   {
     ok,
     {{one_for_one, 5, 10},
@@ -131,6 +135,7 @@ init([]) ->
         PatternsExecutor,
         PatternsStore,
         IQFeed,
-        Web
+        Web,
+        DailyHistory
       ])}}.
 
