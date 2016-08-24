@@ -108,7 +108,7 @@ recalc_sma(Instr, Dropped, NQ, SmaType) ->
       [{_, V}] -> V + (queue:get_r(NQ) - Dropped) / L
     end,
   ets:insert(?STORE_NAME, {Key, Res}),
-  sma_to_memcached(Instr, SmaType, L, Res, queue:get_r(NQ)).
+  sma_to_memcached(Instr, SmaType, L, Res, queue:get(NQ)).
 
 %%--------------------------------------------------------------------
 sma_to_memcached(Instr, SmaType, Length, V, Last) ->
