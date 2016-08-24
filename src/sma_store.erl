@@ -107,4 +107,35 @@ recalc_sma(Instr, Dropped, NQ, SmaType) ->
       [] -> lists:foldl(fun(D, Acc) -> Acc + D / L end, 0, queue:to_list(NQ));
       [{_, V}] -> V + (queue:get_r(NQ) - Dropped) / L
     end,
-  ets:insert(?STORE_NAME, {Key, Res}).
+  ets:insert(?STORE_NAME, {Key, Res}),
+  sma_to_memcached(Instr, SmaType, L, Res, queue:get_r(NQ)).
+
+%%--------------------------------------------------------------------
+sma_to_memcached(Instr, SmaType, Length, V, Last) ->
+  SmaBin = atom_to_binary(SmaType, latin1),
+  Key = <<Instr/binary, ",", SmaBin/binary>>,
+  {Mega, Sec, Micro} = erlang:now(),
+  TSB = integer_to_binary(Micro + Sec * 1000000 + Mega * 1000000000000),
+  LenBin = integer_to_binary(Length),
+  VBin = float_to_binary(V, [{decimals, 4}]),
+  LastBin = float_to_binary(Last, [{decimals, 4}]),
+  Data = <<
+  "{\"timestamp\":",
+  TSB/binary,
+  ",",
+  "\"data\":{",
+  "\"v\":",
+  "\"",
+  VBin/binary,
+  "\",",
+  "\"len\":",
+  "\"",
+  LenBin/binary,
+  "\",",
+  "\"last\":",
+  "\"",
+  LastBin/binary,
+  "\"",
+  "}}"
+  >>,
+  erlmc:set(Key, Data).
