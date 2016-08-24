@@ -30,7 +30,7 @@
   cache = [] :: [{Name :: atom(), DT :: calendar:datetime(), Candle :: #candle{}}],
   max_size :: non_neg_integer(),
   timeout :: pos_integer(),
-  destinations :: [{Name :: atom(), StatName :: atom()}]
+  destinations :: [{Name :: atom(), {StatName :: atom(), UsedSMA :: [SMAType :: atom()] | undefined}}]
 }).
 
 -compile([{parse_transform, lager_transform}]).
@@ -53,12 +53,32 @@ store(Dest, DateTime, Candles) -> gen_server:cast(?SERVER, {store, Dest, DateTim
 %%%===================================================================
 init([Tables, MaxSize, Timeout]) ->
   Dests = lists:map(
-    fun({Name, TableName}) ->
+    fun({Name, TableName, Options}) ->
       StatName = list_to_atom(atom_to_list(Name) ++ "_stmt"),
-      emysql:prepare(
-        StatName,
-        "INSERT INTO " ++ TableName ++ " (name, ts, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)"),
-      {Name, StatName}
+      case proplists:get_value(use_sma, Options, undefined) of
+        undefined ->
+          emysql:prepare(
+            StatName,
+            "INSERT INTO " ++ TableName ++ " (name, ts, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)"),
+          {Name, {StatName, undefined}};
+        SMAs ->
+          {Fields, SMATypes} = lists:foldr(
+            fun({Type, FieldName}, {AccFieldNames, AccTypes}) -> {[",", FieldName | AccFieldNames], [Type | AccTypes]} end,
+            {[], []},
+            SMAs),
+          emysql:prepare(
+            StatName,
+            [
+              "INSERT INTO ",
+              TableName,
+              " (name, ts, open, high, low, close, volume",
+              Fields,
+              ") VALUES (?,?,?,?,?,?,?",
+              [",?" || _ <- SMATypes],
+              ")"]
+          ),
+          {Name, {StatName, SMATypes}}
+      end
     end,
     Tables),
   {ok, #state{max_size = MaxSize, timeout = Timeout, destinations = Dests}}.
@@ -103,11 +123,21 @@ flush(Data, State) ->
       C#candle.vol
     ],
     lager:info("FLUSH REC: ~p", [VV]),
-    emysql:execute(
-      mysql_candles_store,
-      proplists:get_value(Name, State#state.destinations),
-      VV
-    )
+    case proplists:get_value(Name, State#state.destinations) of
+      {StmtName, undefined} ->
+        emysql:execute(
+          mysql_candles_store,
+          StmtName,
+          VV
+        );
+      {StmtName, SMATypes} when is_list(SMATypes) ->
+        SMAValues = [sma_store:get_sma(C#candle.name, Type) || Type <- SMATypes],
+        emysql:execute(
+          mysql_candles_store,
+          StmtName,
+          VV ++ SMAValues
+        )
+    end
   end,
   lists:foreach(StoreFun, Data),
   ok.
