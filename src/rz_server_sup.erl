@@ -147,6 +147,7 @@ init([]) ->
         Cache,
         FiresCache,
         SMAStore,
+        SMAUpdater,
         PatternsExecutor,
         PatternsStore,
         IQFeed,
