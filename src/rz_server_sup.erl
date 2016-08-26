@@ -104,6 +104,10 @@ init([]) ->
     {sma_store, start_link, []},
     permanent, brutal_kill, worker, [sma_store]},
 
+  SMAUpdater = {sma_updater,
+    {sma_updater, start_link, []},
+    permanent, brutal_kill, worker, [sma_updater]},
+
   PatternsExecutor = {patterns_executor,
     {patterns_executor, start_link, []},
     permanent, brutal_kill, worker, [patterns_executor]},
