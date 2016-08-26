@@ -63,7 +63,8 @@ init([Tables, MaxSize, Timeout]) ->
           {Name, {StatName, undefined}};
         SMAs ->
           {Fields, SMATypes} = lists:foldr(
-            fun({Type, FieldName}, {AccFieldNames, AccTypes}) -> {[",", FieldName | AccFieldNames], [Type | AccTypes]} end,
+            fun({Type, FieldName}, {AccFieldNames, AccTypes}) ->
+              {[",", FieldName | AccFieldNames], [Type | AccTypes]} end,
             {[], []},
             SMAs),
           emysql:prepare(
@@ -131,7 +132,15 @@ flush(Data, State) ->
           VV
         );
       {StmtName, SMATypes} when is_list(SMATypes) ->
-        SMAValues = [sma_store:get_sma(C#candle.name, Type) || Type <- SMATypes],
+        SMAValues =
+          [
+            begin
+              case sma_store:get_sma(C#candle.name, Type) of
+                {ok, V} -> V;
+                {error, not_found} -> 0
+              end
+            end || Type <- SMATypes
+          ],
         emysql:execute(
           mysql_candles_store,
           StmtName,
