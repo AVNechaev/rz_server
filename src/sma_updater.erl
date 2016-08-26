@@ -132,7 +132,7 @@ update_db(Timestamp, Instr, Known) ->
   Vals =
     [get_v(Instr, Type) || {Type, _, _} <- Known] ++
     [
-      calendar:gregorian_seconds_to_datetime(Timestamp),
-      Instr
+      Instr,
+      util:datetime_to_mysql(calendar:gregorian_seconds_to_datetime(Timestamp))
     ],
   emysql:execute(mysql_candles_store, sma_updater, Vals).
