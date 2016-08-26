@@ -39,7 +39,7 @@ start_link() -> gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 %%--------------------------------------------------------------------
 -spec exec(Depth :: pos_integer()) -> ok.
 exec(Depth) ->
-  ets:delete_all_objects(?STORE_NAME),
+  gen_server:call(?SERVER, clean_ets),
   {ok, Instr} = rz_util:load_instr_csv(
     rz_util:get_env(iqfeed_client, instr_file),
     rz_util:get_env(iqfeed_client, instr_file_header),
@@ -66,6 +66,10 @@ init([]) ->
   {ok, #state{known_smas = rz_util:get_env(rz_server, sma_updater)}}.
 
 %%--------------------------------------------------------------------
+handle_call(clean_ets, _From, State) ->
+  ets:delete_all_objects(?STORE_NAME),
+  {reply, ok, State};
+%%---
 handle_call({add_daily_candle, Timestamp, Candle}, _From, State = #state{known_smas = Known}) ->
   lists:foreach(fun(I) -> process_single(Candle, I) end, Known),
   update_db(Timestamp, Candle#candle.name, Known),
