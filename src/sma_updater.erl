@@ -39,6 +39,7 @@ start_link() -> gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 %%--------------------------------------------------------------------
 -spec exec(Depth :: pos_integer()) -> ok.
 exec(Depth) ->
+  ets:delete_all_objects(?STORE_NAME),
   {ok, Instr} = rz_util:load_instr_csv(
     rz_util:get_env(iqfeed_client, instr_file),
     rz_util:get_env(iqfeed_client, instr_file_header),
