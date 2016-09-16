@@ -212,7 +212,7 @@ transform_instr(_, Data, InstrType, Ctx) ->
                        true -> Ctx;
                        undefined -> Ctx ++ [{use_current_candle, true}]
                      end,
-        {fun(Candle) -> Candle end, UpdatedCtx};
+        {fun(Candle) -> {ok, Candle} end, UpdatedCtx};
       _ ->
         OffInt = binary_to_integer(Offset) - 2,
         lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
