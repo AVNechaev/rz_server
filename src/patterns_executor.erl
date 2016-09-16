@@ -167,8 +167,8 @@ transform_pattern({constant, _, Value}, Ctx) ->
 transform_pattern({instr, _Line, {sma, SMAType}}, Ctx) ->
   lager:info("Pattern operand get_SMA (~p)", [SMAType]),
   {
-    fun(Instr) ->
-      case sma_store:get_sma(Instr, SMAType) of
+    fun(#candle{name = Name, close = Price}) ->
+      case sma_store:get_current_sma(Name, Price, SMAType) of
         {ok, V} -> V;
         {error, not_found} -> throw(?NO_DATA)
       end
@@ -212,14 +212,13 @@ transform_instr(_, Data, InstrType, Ctx) ->
                        true -> Ctx;
                        undefined -> Ctx ++ [{use_current_candle, true}]
                      end,
-        {fun(Instr) ->
-          timeframe_worker:get_current_candle(Instr, CurStorageName) end, UpdatedCtx};
+        {fun(Candle) -> Candle end, UpdatedCtx};
       _ ->
         OffInt = binary_to_integer(Offset) - 2,
         lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
         {
-          fun(Instr) ->
-            online_history_worker:get_candle(HistStorageName, Instr, Length, OffInt)
+          fun(#candle{name = Name}) ->
+            online_history_worker:get_candle(HistStorageName, Name, Length, OffInt)
           end,
           Ctx}
     end,

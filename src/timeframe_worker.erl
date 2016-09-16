@@ -110,8 +110,8 @@ handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed 
   if
     LastFlushed == undefined orelse Tick#tick.time > LastFlushed ->
       NewState = reinit_state(Tick#tick.time, State),
-      update_current_candle(Tick, NewState),
-      (NewState#state.fires_fun)(Tick#tick.name, universal_to_candle_time(NewState)),
+      Candle = update_current_candle(Tick, NewState),
+      (NewState#state.fires_fun)(Candle, universal_to_candle_time(NewState)),
       {noreply, NewState#state{empty = false}};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -125,8 +125,8 @@ handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}
                      reinit_state(Tick#tick.time, State);
                    true -> State
                  end,
-      update_current_candle(Tick, NewState),
-      (NewState#state.fires_fun)(Tick#tick.name, universal_to_candle_time(NewState)),
+      Candle = update_current_candle(Tick, NewState),
+      (NewState#state.fires_fun)(Candle, universal_to_candle_time(NewState)),
       {noreply, NewState};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -156,7 +156,8 @@ update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = B
     [] ->
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV},
       candle_to_memcached(NewCandle, State),
-      true = ets:insert_new(Tid, NewCandle);
+      true = ets:insert_new(Tid, NewCandle),
+      NewCandle;
     [C] ->
       U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}, {#candle.bid, Bid}, {#candle.ask, Ask}],
       U2 = if
@@ -178,7 +179,8 @@ update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = B
         low = proplists:get_value(#candle.low, U3, C#candle.low)
       },
       candle_to_memcached(NewCandle, State),
-      ets:update_element(Tid, C#candle.name, U3)
+      ets:update_element(Tid, C#candle.name, U3),
+      NewCandle
   end.
 
 %%--------------------------------------------------------------------
@@ -288,7 +290,7 @@ log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
 log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
-active_fires_fun(InstrName, TickCandleTime) -> patterns_executor:check_patterns({tick, InstrName}, TickCandleTime).
+active_fires_fun(Candle, TickCandleTime) -> patterns_executor:check_patterns({tick, Candle}, TickCandleTime).
 inactive_fires_fun(_, _) -> ok.
 
 %%--------------------------------------------------------------------
@@ -301,7 +303,7 @@ refire_on_flush_candles(State) ->
   CurrentTime = universal_to_candle_time(State),
   lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
-    fun(#candle{name = N}, _) -> patterns_executor:check_patterns({candle, N}, CurrentTime) end,
+    fun(Candle = #candle{}, _) -> patterns_executor:check_patterns({candle, Candle}, CurrentTime) end,
     undefined,
     State#state.tid),
   lager:info("CHECKING_FLUSH_PATTERNS completed"),

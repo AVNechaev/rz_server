@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, add_daily_candle/1, get_sma/2]).
+-export([start_link/0, add_daily_candle/1, get_sma/2, get_current_sma/3]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -46,6 +46,18 @@ get_sma(Instr, Type) ->
   case ets:lookup(?STORE_NAME, ?SMA_KEY(Instr, Type)) of
     [] -> {error, not_found};
     [{_, Data}] -> {ok, Data}
+  end.
+
+%%--------------------------------------------------------------------
+-spec get_current_sma(Instr :: instr_name(), LastPrice :: float(), Type :: atom()) -> {ok, Data :: float()} | {error, not_found}.
+get_current_sma(Instr, LastPrice, Type) ->
+  case ets:lookup(?STORE_NAME, ?SMA_KEY(Instr, Type)) of
+    [] -> {error, not_found};
+    [{_, Data}] ->
+      [{_, Q}] = ets:lookup(?STORE_NAME, ?HISTORY_KEY(Instr, Type)),
+      Len = queue:len(Q),
+      Last = queue:get(Q),
+      {ok, Data + (LastPrice - Last) / Len}
   end.
 
 %%%===================================================================
