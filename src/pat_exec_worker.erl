@@ -116,7 +116,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-on_fired(PatIdx, {From, Instr}, UTCCandlesTime, _State) ->
+on_fired(PatIdx, {From, #candle{name = Instr}}, UTCCandlesTime, _State) ->
   lager:info("PATTERN ~p fired for {~p,~p} at ~p", [PatIdx, From, Instr, UTCCandlesTime]),
   fires_cached_store:store(PatIdx, Instr, UTCCandlesTime),
   ok.
