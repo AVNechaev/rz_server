@@ -10,7 +10,7 @@
 -author("anechaev").
 
 %% API
--export([]).
+-export([new/1, store/2]).
 
 -record(sma_q, {
   data :: tuple(),
@@ -79,4 +79,12 @@ store_test() ->
 
   Q5 = store(5, Q4),
   ?assert(Q5#sma_q.data == {4, 5, 3}),
-  ?assert(eq(Q5#sma_q.val, 4)).
+  ?assert(eq(Q5#sma_q.val, 4)),
+
+  Q6 = store(6, Q5),
+  ?assert(Q6#sma_q.data == {4, 5, 6}),
+  ?assert(eq(Q6#sma_q.val, 5)),
+
+  Q7 = store(7, Q6),
+  ?assert(Q7#sma_q.data == {7, 5, 6}),
+  ?assert(eq(Q7#sma_q.val, 6)).
