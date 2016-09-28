@@ -27,6 +27,7 @@
 -type fires_fun() :: fun((InstrName :: instr_name, TickCandleTime :: pos_integer()) -> ok).
 
 -include("internal.hrl").
+
 -record(state, {
   stock_open_f :: stock_open_fun(),
   fires_fun :: fires_fun(),
