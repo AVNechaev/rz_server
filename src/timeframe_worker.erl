@@ -27,6 +27,7 @@
 -type fires_fun() :: fun((InstrName :: instr_name, TickCandleTime :: pos_integer()) -> ok).
 
 -include("internal.hrl").
+
 -record(state, {
   stock_open_f :: stock_open_fun(),
   fires_fun :: fires_fun(),
@@ -37,6 +38,7 @@
   candles_last_flushed :: pos_integer() | undefined,
   expired_ticks = 0 :: non_neg_integer(), %% количество устаревших тиков (пришедших по времени после флуша соотв свечки)
   tid :: ets:tid(),
+  sma_tid :: ets:tid(),
   current_tref = undefined :: undefined | reference(),
   duration :: pos_integer(), %длительность свечки
   name :: atom(),
@@ -44,13 +46,16 @@
   history_name :: atom(),
   reinit_timeout :: non_neg_integer(),
   epoch_start :: non_neg_integer(), %% время в секундах 1.01.1970
-  propagate_to_sma :: boolean()
+  propagate_to_sma :: boolean(),
+  known_smas :: [atom()] %% список SMA, по которым есть данные в ETS sma_tid
 }).
 
 -type frame_params() :: list().
 
 -define(MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG, 1000).
 -define(LOG_ALL_EXPIRED_TICKS, 0).
+
+-define(SMA_QUEUE_KEY(Instr, SMAName), {Instr, SMAName}).
 
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================
@@ -62,7 +67,7 @@ start_link(Name, Params) ->
 
 %%--------------------------------------------------------------------
 -spec reg_name(Name :: atom()) -> atom().
-reg_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_frame_wroker").
+reg_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_frame_worker").
 
 %%--------------------------------------------------------------------
 -spec add_tick(ThisName :: atom(), Tick :: #tick{}) -> ok.
@@ -85,6 +90,8 @@ get_current_candle(InstrName, StorageName) ->
 %%%===================================================================
 init([Name, Params]) ->
   Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
+  SMATid = ets:new(sma_storage_name(Name), [private, set]),
+
   FiresFun =
     case proplists:get_value(fires_data, Params, false) of
       true -> fun active_fires_fun/2;
@@ -96,6 +103,7 @@ init([Name, Params]) ->
       fires_fun = FiresFun,
       empty = true,
       tid = Tid,
+      sma_tid = SMATid,
       duration = proplists:get_value(duration, Params),
       name = Name,
       name_bin = atom_to_binary(Name, latin1),
@@ -151,15 +159,22 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask}, State = #state{tid = Tid}) ->
+update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask}, State = #state{tid = Tid}) ->
+  SMAValues = update_sma_queues(Tick, State#state.sma_tid, State#state.known_smas),
   case ets:lookup(Tid, Name) of
     [] ->
-      NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV},
+      NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV, smas = SMAValues},
       candle_to_memcached(NewCandle, State),
       true = ets:insert_new(Tid, NewCandle),
       NewCandle;
     [C] ->
-      U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}, {#candle.bid, Bid}, {#candle.ask, Ask}],
+      U1 = [
+        {#candle.close, LP},
+        {#candle.vol, C#candle.vol + LV},
+        {#candle.bid, Bid},
+        {#candle.ask, Ask},
+        {#candle.smas, SMAValues}],
+
       U2 = if
              LP > C#candle.high -> [{#candle.high, LP} | U1];
              true -> U1
@@ -233,7 +248,7 @@ flush_candles(State) ->
   ok = candles_cached_store:store(State#state.name, DT, Data).
 
 %%--------------------------------------------------------------------
-candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vol = V}, State) ->
+candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vol = V, smas = SMAs}, State) ->
   Instr = case is_binary(N) of
             true -> N;
             false -> list_to_binary(N)
@@ -246,6 +261,12 @@ candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vo
   LB = float_to_binary(L, [{decimals, 4}]),
   CB = float_to_binary(C, [{decimals, 4}]),
   VB = integer_to_binary(V),
+
+  SMAText = iolist_to_binary(
+    [
+      [",\"", T, "\":\"", float_to_binary(SV, [{decimals, 4}]), "\""]
+      || {T, SV} <- SMAs
+    ]),
   Data = <<
   "{\"timestamp\":",
   TSB/binary,
@@ -279,6 +300,7 @@ candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vo
   "\"",
   VB/binary,
   "\"",
+  SMAText/binary,
   "}}"
   >>,
   erlmc:set(Key, Data).
@@ -308,3 +330,23 @@ refire_on_flush_candles(State) ->
     State#state.tid),
   lager:info("CHECKING_FLUSH_PATTERNS completed"),
   ok.
+
+%%--------------------------------------------------------------------
+-spec sma_storage_name(FrameName :: atom()) -> atom().
+sma_storage_name(FrameName) -> list_to_atom(atom_to_list(FrameName) ++ "_sma_table").
+
+%%--------------------------------------------------------------------
+-spec update_sma_queues(Tick :: #tick{}, Tid :: ets:tid(), KnownSMAs :: [atom()]) -> sma_values().
+update_sma_queues(Tick, Tid, KnownSMAs) ->
+  F =
+    fun(SMAName, Acc) ->
+      Key = ?SMA_QUEUE_KEY(Tick#tick.name, SMAName),
+      case ets:lookup(Tid, Key) of
+        [] -> Acc;
+        [{_, {SMAText, Q}}] ->
+          NewQ = sma_queue:store(Tick#tick.last_price, Q),
+          ets:update_element(Tid, Key, {2, {SMAText, NewQ}}),
+          [{SMAText, NewQ#sma_q.val} | Acc]
+      end
+    end,
+  lists:foldl(F, [], KnownSMAs).

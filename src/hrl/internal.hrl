@@ -19,4 +19,13 @@
 
 -define(SNP_PREFIX, <<"SNP">>). %% префикс в паттерне для использования SNP500
 
+-record(sma_q, {
+  data :: tuple(),
+  head :: integer(),
+  tail :: integer(),
+  size :: integer(),
+  act_size :: integer(),
+  val :: float()
+}).
+
 -endif.

@@ -12,15 +12,7 @@
 %% API
 -export([new/1, store/2]).
 
--record(sma_q, {
-  data :: tuple(),
-  head :: integer(),
-  tail :: integer(),
-  size :: integer(),
-  act_size :: integer(),
-  val :: float()
-}).
-
+-include("internal.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 %%--------------------------------------------------------------------
