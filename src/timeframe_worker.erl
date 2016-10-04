@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2]).
+-export([start_link/3, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -46,7 +46,7 @@
   history_name :: atom(),
   reinit_timeout :: non_neg_integer(),
   epoch_start :: non_neg_integer(), %% время в секундах 1.01.1970
-  known_smas :: [atom()], %% список SMA, по которым есть данные в ETS sma_tid
+  known_smas :: [{atom(), string() | binary()}], %% список SMA, по которым есть данные в ETS sma_tid
   cache_context :: term()
 }).
 
@@ -61,8 +61,8 @@
 %%%===================================================================
 %%% API
 %%%===================================================================
--spec(start_link(Name :: atom(), Params :: frame_params()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(Name, Params) ->
+-spec(start_link(Name :: atom(), Params :: frame_params(), Instrs :: list()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link(Name, Params, Instrs) ->
   gen_server:start_link({local, reg_name(Name)}, ?MODULE, [Name, Params], []).
 
 %%--------------------------------------------------------------------
@@ -88,7 +88,7 @@ get_current_candle(InstrName, StorageName) ->
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init([Name, Params]) ->
+init([Name, Params, Instrs]) ->
   Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
   SMATid = ets:new(sma_storage_name(Name), [private, set]),
 
@@ -339,3 +339,11 @@ update_sma_queues(Tick, Tid, KnownSMAs) ->
       end
     end,
   lists:foldr(F, [], KnownSMAs).
+
+%%--------------------------------------------------------------------
+populate_sma(Tid, Instrs) ->
+  SMAs = rz_util:get_env(rz_server, sma),
+  MaxDepth = lists:max([Depth || {_, _, Depth} <- SMAs]),
+
+%%   для каждого инструмента и sma сделать запись в ets
+  hui.
