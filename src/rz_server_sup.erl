@@ -86,11 +86,7 @@ init([]) ->
   ],
 
   Cache = {candles_cache,
-    {candles_cached_store, start_link, [
-      rz_util:get_env(rz_server, cache_tables),
-      rz_util:get_env(rz_server, cache_size),
-      rz_util:get_env(rz_server, cache_timeout)
-    ]},
+    {candles_cached_store, start_link, []},
     permanent, brutal_kill, worker, [candles_cached_store]},
 
   FiresCache = {fires_cache,

@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/3, store/3]).
+-export([start_link/0, store/3, init_context/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -29,64 +29,55 @@
 -record(state, {
   cache = [] :: [{Name :: atom(), DT :: calendar:datetime(), Candle :: #candle{}}],
   max_size :: non_neg_integer(),
-  timeout :: pos_integer(),
-  destinations :: [{Name :: atom(), {StatName :: atom(), UsedSMA :: [SMAType :: atom()] | undefined}}]
+  timeout :: pos_integer()
 }).
 
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================
 %%% API
 %%%===================================================================
--spec(start_link(
-    Tables :: [{Name :: atom(), TableName :: string()}],
-    MaxSize :: non_neg_integer(),
-    Timeout :: pos_integer()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(Tables, MaxSize, Timeout) ->
-  gen_server:start_link({local, ?SERVER}, ?MODULE, [Tables, MaxSize, Timeout], []).
+-spec(start_link() -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link() ->
+  gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%--------------------------------------------------------------------
 -spec store(Dest :: atom(), DateTime :: calendar:datetime(), Candles :: [#candle{}]) -> ok.
 store(Dest, DateTime, Candles) -> gen_server:cast(?SERVER, {store, Dest, DateTime, Candles}).
 
+%%--------------------------------------------------------------------
+%% Context aka statement name
+-spec init_context(FrameName :: atom()) -> atom().
+init_context(FrameName) -> list_to_atom(atom_to_list(FrameName) ++ "_stmt").
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init([Tables, MaxSize, Timeout]) ->
-  Dests = lists:map(
-    fun({Name, TableName, Options}) ->
-      StatName = list_to_atom(atom_to_list(Name) ++ "_stmt"),
-      case proplists:get_value(use_sma, Options, undefined) of
-        undefined ->
-          emysql:prepare(
-            StatName,
-            "INSERT INTO " ++ TableName ++ " (name, ts, open, high, low, close, volume) VALUES (?,?,?,?,?,?,?)"),
-          {Name, {StatName, undefined}};
-        SMAs ->
-          {Fields, SMATypes} = lists:foldr(
-            fun({Type, FieldName}, {AccFieldNames, AccTypes}) ->
-              {[",", FieldName | AccFieldNames], [Type | AccTypes]} end,
-            {[], []},
-            SMAs),
-          emysql:prepare(
-            StatName,
-            [
-              "INSERT INTO ",
-              TableName,
-              " (name, ts, open, high, low, close, volume",
-              Fields,
-              ") VALUES (?,?,?,?,?,?,?",
-              [",?" || _ <- SMATypes],
-              ")"]
-          ),
-          {Name, {StatName, SMATypes}}
-      end
+init([]) ->
+  Tables = rz_util:get_env(rz_server, cache_tables),
+  MaxSize = rz_util:get_env(rz_server, cache_size),
+  Timeout = rz_util:get_env(rz_server, cache_timeout),
+  Fields = [[",", FieldName] || {_Type, FieldName, _Depth} <- rz_util:get_env(rz_server, sma)],
+  lists:map(
+    fun({Name, TableName, _Options}) ->
+      StmtName = init_context(Name),
+      emysql:prepare(
+        StmtName,
+        [
+          "INSERT INTO ",
+          TableName,
+          " (name, ts, open, high, low, close, volume",
+          Fields,
+          ") VALUES (?,?,?,?,?,?,?",
+          lists:duplicate(",?", erlang:size(rz_util:get_env(rz_server, sma))),
+          ")"]
+      )
     end,
     Tables),
-  {ok, #state{max_size = MaxSize, timeout = Timeout, destinations = Dests}}.
+  {ok, #state{max_size = MaxSize, timeout = Timeout}}.
 
 %%--------------------------------------------------------------------
-handle_cast({store, Dest, DateTime, Candles}, State) ->
-  CurZipped = [{Dest, DateTime, C} || C <- Candles],
+handle_cast({store, CacheCtx, DateTime, Candles}, State) ->
+  CurZipped = [{CacheCtx, DateTime, C} || C <- Candles],
   NewCached = CurZipped ++ State#state.cache,
   if
     erlang:length(NewCached) >= State#state.max_size ->
@@ -111,9 +102,9 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-flush(Data, State) ->
+flush(Data, _State) ->
   lager:info("Flushing candles cache..."),
-  StoreFun = fun({Name, DT, C}) ->
+  StoreFun = fun({CacheCtx, DT, C}) ->
     VV = [
       C#candle.name,
       util:datetime_to_mysql(DT),
@@ -123,30 +114,12 @@ flush(Data, State) ->
       C#candle.close,
       C#candle.vol
     ],
-    lager:info("FLUSH REC: ~p", [VV]),
-    case proplists:get_value(Name, State#state.destinations) of
-      {StmtName, undefined} ->
-        emysql:execute(
-          mysql_candles_store,
-          StmtName,
-          VV
-        );
-      {StmtName, SMATypes} when is_list(SMATypes) ->
-        SMAValues =
-          [
-            begin
-              case sma_store:get_sma(C#candle.name, Type) of
-                {ok, V} -> V;
-                {error, not_found} -> 0
-              end
-            end || Type <- SMATypes
-          ],
-        emysql:execute(
-          mysql_candles_store,
-          StmtName,
-          VV ++ SMAValues
-        )
-    end
+    SMAValues = [V || {_, V} <- C#candle.smas],
+    emysql:execute(
+      mysql_candles_store,
+      CacheCtx,
+      VV ++ SMAValues
+    )
   end,
   lists:foreach(StoreFun, Data),
   ok.

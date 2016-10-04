@@ -46,8 +46,8 @@
   history_name :: atom(),
   reinit_timeout :: non_neg_integer(),
   epoch_start :: non_neg_integer(), %% время в секундах 1.01.1970
-  propagate_to_sma :: boolean(),
-  known_smas :: [atom()] %% список SMA, по которым есть данные в ETS sma_tid
+  known_smas :: [atom()], %% список SMA, по которым есть данные в ETS sma_tid
+  cache_context :: term()
 }).
 
 -type frame_params() :: list().
@@ -110,7 +110,8 @@ init([Name, Params]) ->
       history_name = online_history_worker:reg_name(Name),
       reinit_timeout = proplists:get_value(reinit_timeout, Params),
       epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}}),
-      propagate_to_sma = proplists:get_value(propagate_to_sma, Params, false)
+      known_smas = [{Name, FieldName} || {Name, FieldName, _Depth} <- rz_util:get_env(rz_server, sma)],
+      cache_context = candles_cached_store:init_context(Name)
     }}.
 
 %%--------------------------------------------------------------------
@@ -230,22 +231,10 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
 %%--------------------------------------------------------------------
 flush_candles(State) ->
   DT = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
-  {{Y, M, D}, {H, Mi, S}} = DT,
   Data = ets:tab2list(State#state.tid),
-  [
-    begin
-      lager:info(
-        "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
-        [State#state.name, D, M, Y, H, Mi, S, C#candle.name, C#candle.open, C#candle.close, C#candle.high, C#candle.low, C#candle.vol]),
-      case State#state.propagate_to_sma of
-        true -> sma_store:add_daily_candle(C);
-        false -> ok
-      end,
-      online_history_worker:add_recent_candle(State#state.history_name, C)
-    end || C <- Data
-  ],
+  [online_history_worker:add_recent_candle(State#state.history_name, C) || C <- Data],
   refire_on_flush_candles(State),
-  ok = candles_cached_store:store(State#state.name, DT, Data).
+  ok = candles_cached_store:store(State#state.cache_context, DT, Data).
 
 %%--------------------------------------------------------------------
 candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vol = V, smas = SMAs}, State) ->
@@ -339,14 +328,14 @@ sma_storage_name(FrameName) -> list_to_atom(atom_to_list(FrameName) ++ "_sma_tab
 -spec update_sma_queues(Tick :: #tick{}, Tid :: ets:tid(), KnownSMAs :: [atom()]) -> sma_values().
 update_sma_queues(Tick, Tid, KnownSMAs) ->
   F =
-    fun(SMAName, Acc) ->
+    fun({SMAName, SMABinName}, Acc) ->
       Key = ?SMA_QUEUE_KEY(Tick#tick.name, SMAName),
       case ets:lookup(Tid, Key) of
         [] -> Acc;
-        [{_, {SMAText, Q}}] ->
+        [{_, Q}] ->
           NewQ = sma_queue:store(Tick#tick.last_price, Q),
-          ets:update_element(Tid, Key, {2, {SMAText, NewQ}}),
-          [{SMAText, NewQ#sma_q.val} | Acc]
+          ets:update_element(Tid, Key, {2, NewQ}),
+          [{SMABinName, NewQ#sma_q.val} | Acc]
       end
     end,
-  lists:foldl(F, [], KnownSMAs).
+  lists:foldr(F, [], KnownSMAs).
