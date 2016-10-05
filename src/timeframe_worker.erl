@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2]).
+-export([start_link/3, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -38,6 +38,7 @@
   candles_last_flushed :: pos_integer() | undefined,
   expired_ticks = 0 :: non_neg_integer(), %% количество устаревших тиков (пришедших по времени после флуша соотв свечки)
   tid :: ets:tid(),
+  sma_tid :: ets:tid(),
   current_tref = undefined :: undefined | reference(),
   duration :: pos_integer(), %длительность свечки
   name :: atom(),
@@ -45,7 +46,8 @@
   history_name :: atom(),
   reinit_timeout :: non_neg_integer(),
   epoch_start :: non_neg_integer(), %% время в секундах 1.01.1970
-  propagate_to_sma :: boolean()
+  known_smas :: [{atom(), string() | binary()}], %% список SMA, по которым есть данные в ETS sma_tid
+  cache_context :: term()
 }).
 
 -type frame_params() :: list().
@@ -53,17 +55,19 @@
 -define(MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG, 1000).
 -define(LOG_ALL_EXPIRED_TICKS, 0).
 
+-define(SMA_QUEUE_KEY(Instr, SMAName), {Instr, SMAName}).
+
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================
 %%% API
 %%%===================================================================
--spec(start_link(Name :: atom(), Params :: frame_params()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(Name, Params) ->
+-spec(start_link(Name :: atom(), Params :: frame_params(), Instrs :: list()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
+start_link(Name, Params, Instrs) ->
   gen_server:start_link({local, reg_name(Name)}, ?MODULE, [Name, Params], []).
 
 %%--------------------------------------------------------------------
 -spec reg_name(Name :: atom()) -> atom().
-reg_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_frame_wroker").
+reg_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_frame_worker").
 
 %%--------------------------------------------------------------------
 -spec add_tick(ThisName :: atom(), Tick :: #tick{}) -> ok.
@@ -84,8 +88,10 @@ get_current_candle(InstrName, StorageName) ->
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
-init([Name, Params]) ->
+init([Name, Params, Instrs]) ->
   Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
+  SMATid = ets:new(sma_storage_name(Name), [private, set]),
+
   FiresFun =
     case proplists:get_value(fires_data, Params, false) of
       true -> fun active_fires_fun/2;
@@ -97,13 +103,15 @@ init([Name, Params]) ->
       fires_fun = FiresFun,
       empty = true,
       tid = Tid,
+      sma_tid = SMATid,
       duration = proplists:get_value(duration, Params),
       name = Name,
       name_bin = atom_to_binary(Name, latin1),
       history_name = online_history_worker:reg_name(Name),
       reinit_timeout = proplists:get_value(reinit_timeout, Params),
       epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}}),
-      propagate_to_sma = proplists:get_value(propagate_to_sma, Params, false)
+      known_smas = [{Name, FieldName} || {Name, FieldName, _Depth} <- rz_util:get_env(rz_server, sma)],
+      cache_context = candles_cached_store:init_context(Name)
     }}.
 
 %%--------------------------------------------------------------------
@@ -152,15 +160,22 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-update_current_candle(#tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask}, State = #state{tid = Tid}) ->
+update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask}, State = #state{tid = Tid}) ->
+  SMAValues = update_sma_queues(Tick, State#state.sma_tid, State#state.known_smas),
   case ets:lookup(Tid, Name) of
     [] ->
-      NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV},
+      NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV, smas = SMAValues},
       candle_to_memcached(NewCandle, State),
       true = ets:insert_new(Tid, NewCandle),
       NewCandle;
     [C] ->
-      U1 = [{#candle.close, LP}, {#candle.vol, C#candle.vol + LV}, {#candle.bid, Bid}, {#candle.ask, Ask}],
+      U1 = [
+        {#candle.close, LP},
+        {#candle.vol, C#candle.vol + LV},
+        {#candle.bid, Bid},
+        {#candle.ask, Ask},
+        {#candle.smas, SMAValues}],
+
       U2 = if
              LP > C#candle.high -> [{#candle.high, LP} | U1];
              true -> U1
@@ -216,73 +231,19 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
 %%--------------------------------------------------------------------
 flush_candles(State) ->
   DT = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
-  {{Y, M, D}, {H, Mi, S}} = DT,
   Data = ets:tab2list(State#state.tid),
-  [
-    begin
-      lager:info(
-        "Candle-~p,~p.~p.~p ~p:~p:~p,~p,~p,~p,~p,~p,~p",
-        [State#state.name, D, M, Y, H, Mi, S, C#candle.name, C#candle.open, C#candle.close, C#candle.high, C#candle.low, C#candle.vol]),
-      case State#state.propagate_to_sma of
-        true -> sma_store:add_daily_candle(C);
-        false -> ok
-      end,
-      online_history_worker:add_recent_candle(State#state.history_name, C)
-    end || C <- Data
-  ],
+  [online_history_worker:add_recent_candle(State#state.history_name, C) || C <- Data],
   refire_on_flush_candles(State),
-  ok = candles_cached_store:store(State#state.name, DT, Data).
+  ok = candles_cached_store:store(State#state.cache_context, DT, Data).
 
 %%--------------------------------------------------------------------
-candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vol = V}, State) ->
+candle_to_memcached(C = #candle{name = N}, State) ->
   Instr = case is_binary(N) of
             true -> N;
             false -> list_to_binary(N)
           end,
   Key = <<Instr/binary, ",", (State#state.name_bin)/binary>>,
-  {Mega, Sec, Micro} = erlang:now(),
-  TSB = integer_to_binary(Micro + Sec * 1000000 + Mega * 1000000000000),
-  OB = float_to_binary(O, [{decimals, 4}]),
-  HB = float_to_binary(H, [{decimals, 4}]),
-  LB = float_to_binary(L, [{decimals, 4}]),
-  CB = float_to_binary(C, [{decimals, 4}]),
-  VB = integer_to_binary(V),
-  Data = <<
-  "{\"timestamp\":",
-  TSB/binary,
-  ",",
-  "\"data\":{",
-  "\"name\":",
-  "\"",
-  Instr/binary,
-  "\",",
-  "\"ts\":",
-  "\"",
-  (State#state.candles_start_bin)/binary,
-  "\",",
-  "\"open\":",
-  "\"",
-  OB/binary,
-  "\",",
-  "\"high\":",
-  "\"",
-  HB/binary,
-  "\",",
-  "\"low\":",
-  "\"",
-  LB/binary,
-  "\",",
-  "\"close\":",
-  "\"",
-  CB/binary,
-  "\",",
-  "\"volume\":",
-  "\"",
-  VB/binary,
-  "\"",
-  "}}"
-  >>,
-  erlmc:set(Key, Data).
+  erlmc:set(Key, erlang:iolist_to_binary(timeframe_util:candle_to_json(C, State#state.candles_start_bin))).
 
 %%--------------------------------------------------------------------
 log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
@@ -309,3 +270,38 @@ refire_on_flush_candles(State) ->
     State#state.tid),
   lager:info("CHECKING_FLUSH_PATTERNS completed"),
   ok.
+
+%%--------------------------------------------------------------------
+-spec sma_storage_name(FrameName :: atom()) -> atom().
+sma_storage_name(FrameName) -> list_to_atom(atom_to_list(FrameName) ++ "_sma_table").
+
+%%--------------------------------------------------------------------
+-spec update_sma_queues(Tick :: #tick{}, Tid :: ets:tid(), KnownSMAs :: [atom()]) -> sma_values().
+update_sma_queues(Tick, Tid, KnownSMAs) ->
+  F =
+    fun({SMAName, SMABinName}, Acc) ->
+      Key = ?SMA_QUEUE_KEY(Tick#tick.name, SMAName),
+      case ets:lookup(Tid, Key) of
+        [] -> Acc;
+        [{_, Q}] ->
+          NewQ = sma_queue:store(Tick#tick.last_price, Q),
+          ets:update_element(Tid, Key, {2, NewQ}),
+          [{SMABinName, NewQ#sma_q.val} | Acc]
+      end
+    end,
+  lists:foldr(F, [], KnownSMAs).
+
+%%--------------------------------------------------------------------
+populate_sma(Instrs, State) ->
+  SMAs = rz_util:get_env(rz_server, sma),
+  MaxDepth = lists:max([Depth || {_, _, Depth} <- SMAs]),
+  ets:delete_all_objects(State#state.sma_tid),
+  Res = timeframe_util:populate_sma_queues()
+  lists:foreach(
+    fun(I) ->
+      hui
+    end,
+    Instrs
+  ).
+%%   для каждого инструмента и sma сделать запись в ets
+
