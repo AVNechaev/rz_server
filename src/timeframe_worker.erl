@@ -237,62 +237,13 @@ flush_candles(State) ->
   ok = candles_cached_store:store(State#state.cache_context, DT, Data).
 
 %%--------------------------------------------------------------------
-candle_to_memcached(#candle{name = N, open = O, high = H, low = L, close = C, vol = V, smas = SMAs}, State) ->
+candle_to_memcached(C = #candle{name = N}, State) ->
   Instr = case is_binary(N) of
             true -> N;
             false -> list_to_binary(N)
           end,
   Key = <<Instr/binary, ",", (State#state.name_bin)/binary>>,
-  {Mega, Sec, Micro} = erlang:now(),
-  TSB = integer_to_binary(Micro + Sec * 1000000 + Mega * 1000000000000),
-  OB = float_to_binary(O, [{decimals, 4}]),
-  HB = float_to_binary(H, [{decimals, 4}]),
-  LB = float_to_binary(L, [{decimals, 4}]),
-  CB = float_to_binary(C, [{decimals, 4}]),
-  VB = integer_to_binary(V),
-
-  SMAText = iolist_to_binary(
-    [
-      [",\"", T, "\":\"", float_to_binary(SV, [{decimals, 4}]), "\""]
-      || {T, SV} <- SMAs
-    ]),
-  Data = <<
-  "{\"timestamp\":",
-  TSB/binary,
-  ",",
-  "\"data\":{",
-  "\"name\":",
-  "\"",
-  Instr/binary,
-  "\",",
-  "\"ts\":",
-  "\"",
-  (State#state.candles_start_bin)/binary,
-  "\",",
-  "\"open\":",
-  "\"",
-  OB/binary,
-  "\",",
-  "\"high\":",
-  "\"",
-  HB/binary,
-  "\",",
-  "\"low\":",
-  "\"",
-  LB/binary,
-  "\",",
-  "\"close\":",
-  "\"",
-  CB/binary,
-  "\",",
-  "\"volume\":",
-  "\"",
-  VB/binary,
-  "\"",
-  SMAText/binary,
-  "}}"
-  >>,
-  erlmc:set(Key, Data).
+  erlmc:set(Key, erlang:iolist_to_binary(timeframe_util:candle_to_json(C, State#state.candles_start_bin))).
 
 %%--------------------------------------------------------------------
 log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
@@ -341,9 +292,16 @@ update_sma_queues(Tick, Tid, KnownSMAs) ->
   lists:foldr(F, [], KnownSMAs).
 
 %%--------------------------------------------------------------------
-populate_sma(Tid, Instrs) ->
+populate_sma(Instrs, State) ->
   SMAs = rz_util:get_env(rz_server, sma),
   MaxDepth = lists:max([Depth || {_, _, Depth} <- SMAs]),
-
+  ets:delete_all_objects(State#state.sma_tid),
+  Res = timeframe_util:populate_sma_queues()
+  lists:foreach(
+    fun(I) ->
+      hui
+    end,
+    Instrs
+  ).
 %%   для каждого инструмента и sma сделать запись в ets
-  hui.
+
