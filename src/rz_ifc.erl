@@ -18,7 +18,10 @@
 -spec load_instrs(Instrs :: [instr_name()]) -> {Added :: non_neg_integer(), Duplicates :: non_neg_integer()}.
 load_instrs(Instrs) ->
   [
-    online_history_worker:set_instrs(online_history_worker:reg_name(N), Instrs)
+    begin
+      timeframe_worker:set_instrs(timeframe_worker:reg_name(N), Instrs),
+      online_history_worker:set_instrs(online_history_worker:reg_name(N), Instrs)
+    end
     || {N, _} <- rz_util:get_env(rz_server, frames)
   ],
   iql1_conn:set_instrs(Instrs).

@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/3, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2]).
+-export([start_link/3, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2, set_instrs/2]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -47,7 +47,8 @@
   reinit_timeout :: non_neg_integer(),
   epoch_start :: non_neg_integer(), %% время в секундах 1.01.1970
   known_smas :: [{atom(), string() | binary()}], %% список SMA, по которым есть данные в ETS sma_tid
-  cache_context :: term()
+  cache_context :: term(),
+  cache_table :: string() | binary()
 }).
 
 -type frame_params() :: list().
@@ -63,7 +64,7 @@
 %%%===================================================================
 -spec(start_link(Name :: atom(), Params :: frame_params(), Instrs :: list()) -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link(Name, Params, Instrs) ->
-  gen_server:start_link({local, reg_name(Name)}, ?MODULE, [Name, Params], []).
+  gen_server:start_link({local, reg_name(Name)}, ?MODULE, [Name, Params, Instrs], []).
 
 %%--------------------------------------------------------------------
 -spec reg_name(Name :: atom()) -> atom().
@@ -85,34 +86,40 @@ get_current_candle(InstrName, StorageName) ->
     [C] -> {ok, C}
   end.
 
+%%--------------------------------------------------------------------
+-spec set_instrs(ThisName :: atom(), Instrs :: [instr_name()]) -> ok.
+set_instrs(ThisName, Instrs) -> gen_server:call(ThisName, {set_instrs, Instrs}).
+
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 init([Name, Params, Instrs]) ->
   Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
   SMATid = ets:new(sma_storage_name(Name), [private, set]),
-
   FiresFun =
     case proplists:get_value(fires_data, Params, false) of
       true -> fun active_fires_fun/2;
       false -> fun inactive_fires_fun/2
     end,
-  {ok,
-    #state{
-      stock_open_f = proplists:get_value(stock_open_fun, Params),
-      fires_fun = FiresFun,
-      empty = true,
-      tid = Tid,
-      sma_tid = SMATid,
-      duration = proplists:get_value(duration, Params),
-      name = Name,
-      name_bin = atom_to_binary(Name, latin1),
-      history_name = online_history_worker:reg_name(Name),
-      reinit_timeout = proplists:get_value(reinit_timeout, Params),
-      epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}}),
-      known_smas = [{Name, FieldName} || {Name, FieldName, _Depth} <- rz_util:get_env(rz_server, sma)],
-      cache_context = candles_cached_store:init_context(Name)
-    }}.
+  CacheTable = lists:keyfind(Name, 2, rz_util:get_env(rz_server, cache_tables)),
+  State = #state{
+    stock_open_f = proplists:get_value(stock_open_fun, Params),
+    fires_fun = FiresFun,
+    empty = true,
+    tid = Tid,
+    sma_tid = SMATid,
+    duration = proplists:get_value(duration, Params),
+    name = Name,
+    name_bin = atom_to_binary(Name, latin1),
+    history_name = online_history_worker:reg_name(Name),
+    reinit_timeout = proplists:get_value(reinit_timeout, Params),
+    epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}}),
+    known_smas = [{SMAName, FieldName} || {SMAName, FieldName, _Depth} <- rz_util:get_env(rz_server, sma)],
+    cache_context = candles_cached_store:init_context(Name),
+    cache_table = CacheTable
+  },
+  populate_sma(Instrs, State),
+  {ok, State}.
 
 %%--------------------------------------------------------------------
 handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed = LastFlushed}) ->
@@ -152,8 +159,12 @@ handle_info({timeout, _, reinit}, State) ->
   LastFlushed = State#state.candles_start + State#state.duration, %% по идее не должно быть UNDEFINED, т.к. таймер взводится в reinit, но на всякий случай
   {noreply, log_expired_ticks(State#state{empty = true, candles_last_flushed = LastFlushed}, ?LOG_ALL_EXPIRED_TICKS)}.
 
-%%--------------------------------to_date------------------------------------
-handle_call(_Request, _From, _State) -> exit(handle_call_unsupported).
+%%--------------------------------------------------------------------
+handle_call({set_instrs, Instrs}, _From, State) ->
+  populate_sma(Instrs, State),
+  {reply, ok, State}.
+
+%%--------------------------------------------------------------------
 terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
 
@@ -286,7 +297,7 @@ update_sma_queues(Tick, Tid, KnownSMAs) ->
         [{_, Q}] ->
           NewQ = sma_queue:store(Tick#tick.last_price, Q),
           ets:update_element(Tid, Key, {2, NewQ}),
-          [{SMABinName, NewQ#sma_q.val} | Acc]
+          [{SMAName, SMABinName, NewQ#sma_q.val} | Acc]
       end
     end,
   lists:foldr(F, [], KnownSMAs).
@@ -296,12 +307,14 @@ populate_sma(Instrs, State) ->
   SMAs = rz_util:get_env(rz_server, sma),
   MaxDepth = lists:max([Depth || {_, _, Depth} <- SMAs]),
   ets:delete_all_objects(State#state.sma_tid),
-  Res = timeframe_util:populate_sma_queues()
   lists:foreach(
     fun(I) ->
-      hui
+      Res = timeframe_util:populate_sma_queues(I, State#state.cache_table, MaxDepth, SMAs),
+      [
+        ets:insert(State#state.sma_tid, {?SMA_QUEUE_KEY(I, SMAName), Q})
+        || {SMAName, Q} <- Res
+      ]
     end,
     Instrs
   ).
-%%   для каждого инструмента и sma сделать запись в ets
 

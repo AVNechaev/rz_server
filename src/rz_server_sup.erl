@@ -23,19 +23,7 @@
 start_link() ->
   ok = emysql:add_pool(mysql_candles_store, rz_util:get_env(rz_server, mysql_candles_store)),
   ok = emysql:add_pool(mysql_config_store, rz_util:get_env(rz_server, mysql_config_store)),
-  Ret = supervisor:start_link({local, ?MODULE}, ?MODULE, []),
-%%   SMAConf = rz_util:get_env(rz_server, sma_store),
-%%   MaxKnownF =
-%%     fun({_, I}, Acc) when I > Acc -> I;
-%%       (_, Acc) -> Acc
-%%     end,
-%%   MaxDepth = lists:foldl(MaxKnownF, 0, proplists:get_value(known, SMAConf)),
-%%   HistoryF =
-%%     fun({data, {_, Candle}}) -> sma_store:add_daily_candle(Candle);
-%%       (_) -> ok
-%%     end,
-%%   daily_history_getter:get_history_for(Instr, ?DEPTH_WITH_VACATIONS(MaxDepth), HistoryF),
-  Ret.
+  supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -91,14 +79,6 @@ init([]) ->
     ]},
     permanent, brutal_kill, worker, [candles_cached_store]},
 
-  SMAStore = {sma_store,
-    {sma_store, start_link, []},
-    permanent, brutal_kill, worker, [sma_store]},
-
-  SMAUpdater = {sma_updater,
-    {sma_updater, start_link, []},
-    permanent, brutal_kill, worker, [sma_updater]},
-
   PatternsExecutor = {patterns_executor,
     {patterns_executor, start_link, []},
     permanent, brutal_kill, worker, [patterns_executor]},
@@ -137,8 +117,6 @@ init([]) ->
         Frames,
         Cache,
         FiresCache,
-        SMAStore,
-        SMAUpdater,
         PatternsExecutor,
         PatternsStore,
         IQFeed,

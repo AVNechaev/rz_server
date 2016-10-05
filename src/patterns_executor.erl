@@ -167,10 +167,10 @@ transform_pattern({constant, _, Value}, Ctx) ->
 transform_pattern({instr, _Line, {sma, SMAType}}, Ctx) ->
   lager:info("Pattern operand get_SMA (~p)", [SMAType]),
   {
-    fun(#candle{name = Name, close = Price}) ->
-      case sma_store:get_current_sma(Name, Price, SMAType) of
-        {ok, V} -> V;
-        {error, not_found} -> throw(?NO_DATA)
+    fun(#candle{smas = SMAs}) ->
+      case lists:keyfind(SMAType, 1, SMAs) of
+        {_, _, V} -> V;
+        false -> throw(?NO_DATA)
       end
     end,
     Ctx};

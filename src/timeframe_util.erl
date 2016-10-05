@@ -31,7 +31,7 @@ candle_to_json(#candle{name = N, open = O, high = H, low = L, close = C, vol = V
   SMAText =
     [
       [",\"", T, "\":\"", float_to_binary(SV, [{decimals, 4}]), "\""]
-      || {T, SV} <- SMAs
+      || {_, T, SV} <- SMAs
     ],
   [
     "{\"timestamp\":",
@@ -86,7 +86,7 @@ populate_sma_queues(Instr, TableName, MaxDepth, SMAs) ->
     integer_to_binary(MaxDepth)
   ],
   [R] = emysql:execute(mysql_candles_store, SQL),
-  Data = lists:reverse(emysql:as_record(R, last_price_rec, record_info(last_price_rec, fields))),
+  Data = lists:reverse(emysql:as_record(R, last_price_rec, record_info(fields, last_price_rec))),
   ResQ =
     lists:foldl(
       fun(#last_price_rec{val = V}, Queues) ->

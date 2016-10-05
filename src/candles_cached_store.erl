@@ -114,7 +114,7 @@ flush(Data, _State) ->
       C#candle.close,
       C#candle.vol
     ],
-    SMAValues = [V || {_, V} <- C#candle.smas],
+    SMAValues = [V || {_, _, V} <- C#candle.smas],
     emysql:execute(
       mysql_candles_store,
       CacheCtx,
