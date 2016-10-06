@@ -85,8 +85,11 @@ populate_sma_queues(Instr, TableName, MaxDepth, SMAs) ->
     "ORDER BY ts DESC LIMIT ",
     integer_to_binary(MaxDepth)
   ],
-  [R] = emysql:execute(mysql_candles_store, SQL),
-  Data = lists:reverse(emysql:as_record(R, last_price_rec, record_info(fields, last_price_rec))),
+  Data = lists:reverse(
+    emysql:as_record(
+      emysql:execute(mysql_candles_store, SQL),
+      last_price_rec,
+      record_info(fields, last_price_rec))),
   ResQ =
     lists:foldl(
       fun(#last_price_rec{val = V}, Queues) ->
