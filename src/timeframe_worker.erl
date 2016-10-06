@@ -304,6 +304,7 @@ update_sma_queues(Tick, Tid, KnownSMAs) ->
 
 %%--------------------------------------------------------------------
 populate_sma(Instrs, State) ->
+  lager:info("START populating SMAs for the frame: ~p", [State#state.name]),
   SMAs = rz_util:get_env(rz_server, sma),
   MaxDepth = lists:max([Depth || {_, _, Depth} <- SMAs]),
   ets:delete_all_objects(State#state.sma_tid),
@@ -316,5 +317,6 @@ populate_sma(Instrs, State) ->
       ]
     end,
     Instrs
-  ).
+  ),
+  lager:info("SMA Population finished for the frame: ~p.", [State#state.name]).
 

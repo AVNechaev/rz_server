@@ -16,6 +16,7 @@
 -include_lib("rz_util/include/rz_util.hrl").
 
 -record(last_price_rec, {val :: float()}).
+-compile([{parse_transform, lager_transform}]).
 
 %%--------------------------------------------------------------------
 -spec candle_to_json(#candle{}, CandleStartBin :: binary()) -> iolist().
@@ -77,6 +78,7 @@ candle_to_json(#candle{name = N, open = O, high = H, low = L, close = C, vol = V
     MaxDepth :: integer(),
     SMAs :: [{term()}]) -> [{SMAName :: atom(), Q :: #sma_q{}}].
 populate_sma_queues(Instr, TableName, MaxDepth, SMAs) ->
+  lager:info("Filling the sma queue [~p:~p]", [Instr, TableName]),
   SQL = [
     "SELECT close as val FROM ",
     TableName,
