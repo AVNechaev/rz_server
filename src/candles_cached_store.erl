@@ -68,7 +68,7 @@ init([]) ->
           " (name, ts, open, high, low, close, volume",
           Fields,
           ") VALUES (?,?,?,?,?,?,?",
-          lists:duplicate(",?", erlang:size(rz_util:get_env(rz_server, sma))),
+          lists:duplicate(",?", erlang:length(rz_util:get_env(rz_server, sma))),
           ")"]
       )
     end,
