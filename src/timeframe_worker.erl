@@ -101,7 +101,7 @@ init([Name, Params, Instrs]) ->
       true -> fun active_fires_fun/2;
       false -> fun inactive_fires_fun/2
     end,
-  CacheTable = lists:keyfind(Name, 2, rz_util:get_env(rz_server, cache_tables)),
+  CacheTable = lists:keyfind(Name, 1, rz_util:get_env(rz_server, cache_tables)),
   State = #state{
     stock_open_f = proplists:get_value(stock_open_fun, Params),
     fires_fun = FiresFun,
