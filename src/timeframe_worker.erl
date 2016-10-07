@@ -203,7 +203,8 @@ update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, 
         bid = Bid,
         ask = Ask,
         high = proplists:get_value(#candle.high, U3, C#candle.high),
-        low = proplists:get_value(#candle.low, U3, C#candle.low)
+        low = proplists:get_value(#candle.low, U3, C#candle.low),
+        smas = SMAValues
       },
       candle_to_memcached(NewCandle, State),
       ets:update_element(Tid, C#candle.name, U3),
