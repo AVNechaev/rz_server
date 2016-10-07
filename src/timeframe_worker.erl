@@ -95,7 +95,7 @@ set_instrs(ThisName, Instrs) -> gen_server:call(ThisName, {set_instrs, Instrs}).
 %%%===================================================================
 init([Name, Params, Instrs]) ->
   Tid = ets:new(storage_name(Name), [named_table, protected, set, {keypos, #candle.name}]),
-  SMATid = ets:new(sma_storage_name(Name), [private, set]),
+  SMATid = ets:new(sma_storage_name(Name), [protected, set]),
   FiresFun =
     case proplists:get_value(fires_data, Params, false) of
       true -> fun active_fires_fun/2;
