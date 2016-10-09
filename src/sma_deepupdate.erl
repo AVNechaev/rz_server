@@ -19,7 +19,7 @@ exec(Table) ->
   Q200 = sma_queue:new(200),
 
   InFName = "in_" ++ Table,
-  CmdSel = "mysql -urz_writer -p123456 CANDLES -e \"SELECT name, ts, open, high, low, close, volume FROM " ++ Table ++  " ORDER BY ts\" >" ++ InFName,
+  CmdSel = "mysql -urz_writer -p123456 CANDLES -e \"SELECT name, ts, open, high, low, close, volume FROM " ++ Table ++  " ORDER BY ts\" | tail -n +2 >" ++ InFName,
   os:cmd(CmdSel),
   {ok, InH} = file:open(InFName, [read, raw, binary]),
   {ok, OutH} = file:open("out_" ++ Table, [write, raw, binary]),
