@@ -41,9 +41,9 @@ rl({ok, Data}, InH, OutH, S20, S50, S200) ->
     H, ",",
     L, ",",
     C, ",",
-    float_to_binary(N20#sma_q.val), ",",
-    float_to_binary(N50#sma_q.val), ",",
-    float_to_binary(N200#sma_q.val), ",",
+    float_to_binary(N20#sma_q.val, [{decimals, 4}]), ",",
+    float_to_binary(N50#sma_q.val, [{decimals, 4}]), ",",
+    float_to_binary(N200#sma_q.val, [{decimals, 4}]), ",",
     V
   ],
   ok = file:write(OutH, R),
