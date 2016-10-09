@@ -10,8 +10,18 @@
 -author("anechaev").
 
 %% API
--export([exec/1]).
+-export([exec/1, exec/0]).
 -include("internal.hrl").
+
+exec() ->
+  exec("CANDLES_DAILY"),
+  exec("CANDLES_1MIN"),
+  exec("CANDLES_3MIN"),
+  exec("CANDLES_5MIN"),
+  exec("CANDLES_10MIN"),
+  exec("CANDLES_20MIN"),
+  exec("CANDLES_30MIN"),
+  exec("CANDLES_HOURLY").
 
 exec(Table) ->
   InFName = "in_" ++ Table,
@@ -23,7 +33,8 @@ exec(Table) ->
   ok = rl(file:read_line(InH), InH, OutH, T),
   ets:delete(T),
   ok = file:close(OutH),
-  ok = file:close(InH).
+  ok = file:close(InH),
+  io:format("DONE ~p~n", [Table]).
 
 rl(eof, _In, _Out, _T) -> ok;
 rl({ok, Data}, InH, OutH, T) ->
