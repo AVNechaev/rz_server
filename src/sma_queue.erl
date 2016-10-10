@@ -10,7 +10,7 @@
 -author("anechaev").
 
 %% API
--export([new/1, store/2]).
+-export([new/1, store/2, probe_sma/2]).
 
 -include("internal.hrl").
 -include_lib("eunit/include/eunit.hrl").
@@ -44,6 +44,17 @@ store(V, Q = #sma_q{head = H, val = SMA, data = D, act_size = S}) ->
   Q#sma_q{data = ND, head = NH, val = NSMA, act_size = S + 1}.
 
 %%--------------------------------------------------------------------
+-spec probe_sma(V :: integer() | float(), Q :: #sma_q{}) -> float().
+probe_sma(V, #sma_q{data = D, tail = T, val = SMA, act_size = AS, size = S}) ->
+  Last = erlang:element(T + 1, D),
+  case AS of
+    S ->
+      SMA + (V - Last)/S;
+    _ ->
+      (SMA*AS + V)/(AS+1)
+  end.
+
+%%--------------------------------------------------------------------
 eq(V1, V2) -> abs(V1 - V2) < 0.001.
 
 cre_test() ->
@@ -57,26 +68,32 @@ store_test() ->
   ?assert(Q1#sma_q.data == {1, 0, 0}),
   ?assert(eq(Q1#sma_q.val, 1)),
 
+  ?assert(eq(probe_sma(2, Q1), 1.5)),
   Q2 = store(2, Q1),
   ?assert(Q2#sma_q.data == {1, 2, 0}),
   ?assert(eq(Q2#sma_q.val, 1.5)),
 
+  ?assert(eq(probe_sma(3, Q2), 2)),
   Q3 = store(3, Q2),
   ?assert(Q3#sma_q.data == {1, 2, 3}),
   ?assert(eq(Q3#sma_q.val, 2)),
 
+  ?assert(eq(probe_sma(4, Q3), 3)),
   Q4 = store(4, Q3),
   ?assert(Q4#sma_q.data == {4, 2, 3}),
   ?assert(eq(Q4#sma_q.val, 3)),
 
+  ?assert(eq(probe_sma(5, Q4), 4)),
   Q5 = store(5, Q4),
   ?assert(Q5#sma_q.data == {4, 5, 3}),
   ?assert(eq(Q5#sma_q.val, 4)),
 
+  ?assert(eq(probe_sma(6, Q5), 5)),
   Q6 = store(6, Q5),
   ?assert(Q6#sma_q.data == {4, 5, 6}),
   ?assert(eq(Q6#sma_q.val, 5)),
 
+  ?assert(eq(probe_sma(7, Q6), 6)),
   Q7 = store(7, Q6),
   ?assert(Q7#sma_q.data == {7, 5, 6}),
   ?assert(eq(Q7#sma_q.val, 6)).

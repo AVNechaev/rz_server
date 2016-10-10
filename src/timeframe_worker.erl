@@ -172,7 +172,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%% Internal functions
 %%%===================================================================
 update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, bid = Bid, ask = Ask}, State = #state{tid = Tid}) ->
-  SMAValues = update_sma_queues(Tick, State#state.sma_tid, State#state.known_smas),
+  SMAValues = sma_new_values(Tick, State#state.sma_tid, State#state.known_smas),
   case ets:lookup(Tid, Name) of
     [] ->
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV, smas = SMAValues},
@@ -244,6 +244,7 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
 flush_candles(State) ->
   DT = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
   Data = ets:tab2list(State#state.tid),
+  update_sma_table(Data, State#state.sma_tid, State#state.known_smas),
   [online_history_worker:add_recent_candle(State#state.history_name, C) || C <- Data],
   refire_on_flush_candles(State),
   ok = candles_cached_store:store(State#state.cache_context, DT, Data).
@@ -288,20 +289,35 @@ refire_on_flush_candles(State) ->
 sma_storage_name(FrameName) -> list_to_atom(atom_to_list(FrameName) ++ "_sma_table").
 
 %%--------------------------------------------------------------------
--spec update_sma_queues(Tick :: #tick{}, Tid :: ets:tid(), KnownSMAs :: [atom()]) -> sma_values().
-update_sma_queues(Tick, Tid, KnownSMAs) ->
+-spec sma_new_values(Tick :: #tick{}, Tid :: ets:tid(), KnownSMAs :: [atom()]) -> sma_values().
+sma_new_values(Tick, Tid, KnownSMAs) ->
   F =
     fun({SMAName, SMABinName}, Acc) ->
       Key = ?SMA_QUEUE_KEY(Tick#tick.name, SMAName),
       case ets:lookup(Tid, Key) of
         [] -> Acc;
         [{_, Q}] ->
-          NewQ = sma_queue:store(Tick#tick.last_price, Q),
-          ets:update_element(Tid, Key, {2, NewQ}),
-          [{SMAName, SMABinName, NewQ#sma_q.val} | Acc]
+          NewV = sma_queue:probe_sma(Tick#tick.last_price, Q),
+          [{SMAName, SMABinName, NewV} | Acc]
       end
     end,
   lists:foldr(F, [], KnownSMAs).
+
+%%--------------------------------------------------------------------
+-spec update_sma_table(Data :: [#candle{}], Tid :: ets:tid(), KnownSMAs :: [atom()]) -> ok.
+update_sma_table(Data, Tid, KnownSMAs) ->
+  F =
+    fun(#candle{name = Name, close = V}) ->
+      IntF = fun({SMAName, _}) ->
+        Key = ?SMA_QUEUE_KEY(Name, SMAName),
+        case ets:lookup(Tid, Key) of
+          [] -> ok;
+          [{_, Q}] -> ets:update_element(Tid, Key, {2, sma_queue:store(V, Q)})
+        end
+      end,
+      lists:map(IntF, KnownSMAs)
+    end,
+  lists:map(F, Data).
 
 %%--------------------------------------------------------------------
 populate_sma(Instrs, State) ->
