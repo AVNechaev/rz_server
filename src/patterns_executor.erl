@@ -273,11 +273,11 @@ transform_instr(_, Data, InstrType, Ctx) ->
 %%--------------------------------------------------------------------
 update_referenced_frames(FrameName, Ctx) ->
   case proplists:get_value(referenced_frames, Ctx, []) of
-    [] -> Ctx ++ [{referenced_frames, FrameName}];
+    [] -> Ctx ++ [{referenced_frames, [FrameName]}];
     RefFrames ->
       case lists:member(FrameName, RefFrames) of
         true -> Ctx;
         false ->
-          lists:keyreplace(referenced_frames, 1, Ctx, [FrameName | RefFrames])
+          lists:keyreplace(referenced_frames, 1, Ctx, {referenced_frames, [FrameName | RefFrames]})
       end
   end.
