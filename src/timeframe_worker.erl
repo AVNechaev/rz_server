@@ -24,7 +24,7 @@
 
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
 
--type fires_fun() :: fun((InstrName :: instr_name, TickCandleTime :: pos_integer()) -> ok).
+-type fires_fun() :: fun((State :: tuple(), InstrName :: instr_name, TickCandleTime :: pos_integer()) -> ok).
 
 -include("internal.hrl").
 
@@ -98,8 +98,8 @@ init([Name, Params, Instrs]) ->
   SMATid = ets:new(sma_storage_name(Name), [protected, set]),
   FiresFun =
     case proplists:get_value(fires_data, Params, false) of
-      true -> fun active_fires_fun/2;
-      false -> fun inactive_fires_fun/2
+      true -> fun active_fires_fun/3;
+      false -> fun inactive_fires_fun/3
     end,
   {_, CacheTable, _} = lists:keyfind(Name, 1, rz_util:get_env(rz_server, cache_tables)),
   State = #state{
@@ -127,7 +127,7 @@ handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed 
     LastFlushed == undefined orelse Tick#tick.time > LastFlushed ->
       NewState = reinit_state(Tick#tick.time, State),
       Candle = update_current_candle(Tick, NewState),
-      (NewState#state.fires_fun)(Candle, universal_to_candle_time(NewState)),
+      (NewState#state.fires_fun)(State, Candle, universal_to_candle_time(NewState)),
       {noreply, NewState#state{empty = false}};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -142,7 +142,7 @@ handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}
                    true -> State
                  end,
       Candle = update_current_candle(Tick, NewState),
-      (NewState#state.fires_fun)(Candle, universal_to_candle_time(NewState)),
+      (NewState#state.fires_fun)(State, Candle, universal_to_candle_time(NewState)),
       {noreply, NewState};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -265,8 +265,8 @@ log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
 log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
-active_fires_fun(Candle, TickCandleTime) -> patterns_executor:check_patterns({tick, Candle}, TickCandleTime).
-inactive_fires_fun(_, _) -> ok.
+active_fires_fun(State, Candle, TickCandleTime) -> patterns_executor:check_patterns({tick, State#state.name, Candle}, TickCandleTime).
+inactive_fires_fun(_, _, _) -> ok.
 
 %%--------------------------------------------------------------------
 %считает текущее время относительно времени начала свечи (которое может не совпадать с UTC, а идти с запаздыванием
@@ -278,7 +278,7 @@ refire_on_flush_candles(State) ->
   CurrentTime = universal_to_candle_time(State),
   lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
-    fun(Candle = #candle{}, _) -> patterns_executor:check_patterns({candle, Candle}, CurrentTime) end,
+    fun(Candle = #candle{}, _) -> patterns_executor:check_patterns({candle, State#state.name, Candle}, CurrentTime) end,
     undefined,
     State#state.tid),
   lager:info("CHECKING_FLUSH_PATTERNS completed"),

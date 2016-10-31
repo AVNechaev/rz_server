@@ -64,21 +64,24 @@ init([]) ->
 handle_call({load_pattern, Pat}, _From, State) ->
   try
     {ok, {Fun, Ctx}} = compile_pattern(Pat),
+    lager:info("Pattern compiled; Context: ~p", [Ctx]),
+    ReferencedFrames = proplists:get_value(referenced_frames, Ctx, []),
+    UsingCurrentCandle = proplists:get_value(use_current_candle, Ctx, false),
     AnchoredFun =
-      fun({tick, Instr}) ->
-        case proplists:get_value(use_current_candle, Ctx, false) of
+      fun({tick, FrameName, Instr}) ->
+        case UsingCurrentCandle of
           true ->
             try
-              Fun(Instr)
+              frame_filter_fun(Fun, ReferencedFrames, FrameName, Instr)
             catch
               ?NO_DATA -> false
             end;
           false ->
             false
         end;
-        ({candle, Instr}) ->
+        ({candle, FrameName, Instr}) ->
           try
-            Fun(Instr)
+            frame_filter_fun(Fun, ReferencedFrames, FrameName, Instr)
           catch
             ?NO_DATA -> false
           end
@@ -110,6 +113,13 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%% Internal functions
 %%%===================================================================
 elect(#state{workers = Workers}) -> lists:nth(random:uniform(length(Workers)), Workers).
+
+%%--------------------------------------------------------------------
+frame_filter_fun(Fun, UsedFrames, CurrentFrame, Instr) ->
+  case lists:member(CurrentFrame, UsedFrames) of
+    true -> Fun(Instr);
+    false -> false
+  end.
 
 %%--------------------------------------------------------------------
 compile_pattern(#pattern{text = PatternText}) -> compile_pattern(PatternText);
@@ -204,7 +214,7 @@ transform_instr(_, Data, InstrType, Ctx) ->
   CurStorageName = timeframe_worker:storage_name(FrameName),
   HistStorageName = online_history_worker:storage_name(FrameName),
   Length = proplists:get_value(history_depth, proplists:get_value(FrameName, rz_util:get_env(rz_server, frames))),
-  {GetCandleFun, NewCtx} =
+  {GetCandleFun, TempCtx} =
     case Offset of
       <<"1">> ->
         lager:info("Pattern operand get_current_candle(~p, Instr)", [CurStorageName]),
@@ -222,6 +232,7 @@ transform_instr(_, Data, InstrType, Ctx) ->
           end,
           Ctx}
     end,
+  NewCtx = update_referenced_frames(FrameName, TempCtx),
   ExtrFun =
     case Val of
       <<"OPEN">> -> fun(#candle{open = V}) -> V end;
@@ -257,4 +268,16 @@ transform_instr(_, Data, InstrType, Ctx) ->
         end,
         NewCtx
       }
+  end.
+
+%%--------------------------------------------------------------------
+update_referenced_frames(FrameName, Ctx) ->
+  case proplists:get_value(referenced_frames, Ctx, []) of
+    [] -> Ctx ++ [{referenced_frames, FrameName}];
+    RefFrames ->
+      case lists:member(FrameName, RefFrames) of
+        true -> Ctx;
+        false ->
+          lists:keyreplace(referenced_frames, 1, Ctx, [FrameName | RefFrames])
+      end
   end.
