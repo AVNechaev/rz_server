@@ -77,7 +77,7 @@ handle_call({delete_pattern, PatId}, _From, State) ->
   {reply, ok, State#state{patterns = NewPatterns}}.
 
 %%--------------------------------------------------------------------
-handle_cast({check_patterns, Instr = {_, #candle{name = InstrName}}, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
+handle_cast({check_patterns, Instr = {_, _, #candle{name = InstrName}}, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
   F =
     fun(#pattern_data{id = Id, f = PatFun}) ->
       FiresId = ?FIRES_ID(Id, InstrName),
