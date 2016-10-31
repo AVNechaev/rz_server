@@ -68,7 +68,7 @@ handle_call({load_pattern, Pat}, _From, State) ->
     ReferencedFrames = proplists:get_value(referenced_frames, Ctx, []),
     UsingCurrentCandle = proplists:get_value(use_current_candle, Ctx, false),
     AnchoredFun =
-      fun({tick, FrameName, Instr}) ->
+      fun({tick, _FrameName, Instr}) ->
         case UsingCurrentCandle of
           true ->
             try
