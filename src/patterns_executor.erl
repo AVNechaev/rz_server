@@ -72,7 +72,7 @@ handle_call({load_pattern, Pat}, _From, State) ->
         case UsingCurrentCandle of
           true ->
             try
-              frame_filter_fun(Fun, ReferencedFrames, FrameName, Instr)
+              Fun(Instr)
             catch
               ?NO_DATA -> false
             end;
