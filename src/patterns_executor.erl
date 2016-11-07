@@ -174,13 +174,20 @@ transform_pattern({constant, _, Value}, Ctx) ->
   lager:info("Pattern operand CONST=~p", [Value]),
   {fun(_) -> Value end, Ctx};
 %%---
-transform_pattern({instr, _Line, {sma, SMAType}}, Ctx) ->
-  lager:info("Pattern operand get_SMA (~p)", [SMAType]),
+transform_pattern({instr, _Line, {sma, SMAType, <<"Instr#", FrameType/binary>>}}, Ctx) ->
+  [Frame, _Rest] = binary:split(FrameType, <<"#">>),
+  FrameName = proplists:get_value(Frame, rz_util:get_env(rz_server, pattern_names_to_frames)),
+  CurStorageName = timeframe_worker:storage_name(FrameName),
+  lager:info("Pattern operand get_SMA (~p:~p)", [FrameName, SMAType]),
   {
-    fun(#candle{smas = SMAs}) ->
-      case lists:keyfind(SMAType, 1, SMAs) of
-        {_, _, V} -> V;
-        false -> throw(?NO_DATA)
+    fun(#candle{name = Instr}) ->
+      case timeframe_worker:get_current_candle(Instr, CurStorageName) of
+        {ok, #candle{smas = SMAs}} ->
+          case lists:keyfind(SMAType, 1, SMAs) of
+            {_, _, V} -> V;
+            false -> throw(?NO_DATA)
+          end;
+        {error, not_found} -> throw(?NO_DATA)
       end
     end,
     Ctx};
