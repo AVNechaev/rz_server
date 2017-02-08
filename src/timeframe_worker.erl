@@ -29,7 +29,6 @@
 -include("internal.hrl").
 
 -record(state, {
-  stock_open_f :: stock_open_fun(),
   fires_fun :: fires_fun(),
   empty :: boolean(),
   candles_start :: pos_integer() | undefined,
@@ -48,7 +47,9 @@
   epoch_start :: non_neg_integer(), %% время в секундах 1.01.1970
   known_smas :: [{atom(), string() | binary()}], %% список SMA, по которым есть данные в ETS sma_tid
   cache_context :: term(),
-  cache_table :: string() | binary()
+  cache_table :: string() | binary(),
+  stock_timezone :: string(),
+  stock_open_time :: calendar:time()
 }).
 
 -type frame_params() :: list().
@@ -102,8 +103,8 @@ init([Name, Params, Instrs]) ->
       false -> fun inactive_fires_fun/3
     end,
   {_, CacheTable, _} = lists:keyfind(Name, 1, rz_util:get_env(rz_server, cache_tables)),
+  StockOpenParams = proplists:get_value(stock_open, Params),
   State = #state{
-    stock_open_f = proplists:get_value(stock_open_fun, Params),
     fires_fun = FiresFun,
     empty = true,
     tid = Tid,
@@ -116,7 +117,9 @@ init([Name, Params, Instrs]) ->
     epoch_start = calendar:datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}}),
     known_smas = [{SMAName, FieldName} || {SMAName, FieldName, _Depth} <- rz_util:get_env(rz_server, sma)],
     cache_context = candles_cached_store:init_context(Name),
-    cache_table = CacheTable
+    cache_table = CacheTable,
+    stock_timezone = proplists:get_value(timezone, StockOpenParams),
+    stock_open_time = proplists:get_value(time, StockOpenParams)
   },
   populate_sma(Instrs, State),
   {ok, State}.
@@ -212,14 +215,17 @@ update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, 
   end.
 
 %%--------------------------------------------------------------------
-reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = RenitTO}) ->
+reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = RenitTO, stock_timezone = StockTZ}) ->
   case State#state.empty of
     false -> flush_candles(State);
     true -> ok
   end,
   ets:delete_all_objects(State#state.tid),
-  ExpectedStart = (TickTime div Duration) * Duration,
-  StockOpen = (State#state.stock_open_f)(),
+  ExpectedStart = (TickTime div Duration) * Duration, %% UTC
+  {StockDay, _} = calendar:gregorian_seconds_to_datetime(localtime:utc_to_local(TickTime, StockTZ)),
+  StockOpen = localtime:local_to_utc(
+    calendar:datetime_to_gregorian_seconds({StockDay, State#state.stock_open_time}), StockTZ
+  ),
   Start = if
             ExpectedStart < StockOpen -> StockOpen;
             true -> ExpectedStart
