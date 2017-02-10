@@ -222,8 +222,8 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
   end,
   ets:delete_all_objects(State#state.tid),
   ExpectedStart = (TickTime div Duration) * Duration, %% UTC
-  {StockDay, _} = calendar:gregorian_seconds_to_datetime(localtime:utc_to_local(TickTime, StockTZ)),
-  StockOpen = localtime:local_to_utc(
+  {StockDay, _} = calendar:gregorian_seconds_to_datetime(localtime:utc_timestamp_to_local(TickTime, StockTZ)),
+  StockOpen = localtime:local_timestamp_to_utc(
     calendar:datetime_to_gregorian_seconds({StockDay, State#state.stock_open_time}), StockTZ
   ),
   Start = if
