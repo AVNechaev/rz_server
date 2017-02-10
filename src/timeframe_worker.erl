@@ -221,15 +221,15 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
     true -> ok
   end,
   ets:delete_all_objects(State#state.tid),
-  ExpectedStart = (TickTime div Duration) * Duration, %% UTC
-  {StockDay, _} = calendar:gregorian_seconds_to_datetime(localtime:utc_timestamp_to_local(TickTime, StockTZ)),
-  StockOpen = localtime:local_timestamp_to_utc(
-    calendar:datetime_to_gregorian_seconds({StockDay, State#state.stock_open_time}), StockTZ
-  ),
-  Start = if
+  TickAtStockTZ = localtime:utc_timestamp_to_local(TickTime, StockTZ),
+  ExpectedStart = (TickAtStockTZ div Duration) * Duration, %% stock timezone
+  {StockDay, _} = calendar:gregorian_seconds_to_datetime(TickAtStockTZ),
+  StockOpen = calendar:datetime_to_gregorian_seconds({StockDay, State#state.stock_open_time}),
+  StartTZ = if
             ExpectedStart < StockOpen -> StockOpen;
             true -> ExpectedStart
           end,
+  StartUTC = localtime:local_timestamp_to_utc(StartTZ, StockTZ),
   % если на момент срабатывания таймера есть еще тики в очереди, то надо сначала
   % обработать их; иначе при флуде тиков происходит повторная инициализация свечки
   % как вариант, можно при достаточной пропускной способности поставить
@@ -237,14 +237,14 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
   % тиков предыдущей секунды
   TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
   lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
-  StartBin = integer_to_binary(Start - State#state.epoch_start),
+  StartBin = integer_to_binary(StartUTC - State#state.epoch_start),
   State#state{
-    candles_start = Start,
+    candles_start = StartUTC,
     candles_start_bin = StartBin,
     candles_start_utc = calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
     empty = true,
     current_tref = TRef,
-    candles_last_flushed = Start}.
+    candles_last_flushed = StartUTC}.
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
