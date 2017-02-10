@@ -236,7 +236,7 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
   % в reinit_timer (duration + ReinitTimeout), думая, что за N секунд разгребутся остатки
   % тиков предыдущей секунды
   TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
-  lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(Start)]),
+  lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(StartUTC)]),
   StartBin = integer_to_binary(StartUTC - State#state.epoch_start),
   State#state{
     candles_start = StartUTC,
