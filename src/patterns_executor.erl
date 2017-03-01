@@ -167,7 +167,9 @@ transform_pattern({{two_op_arith, _, Operator}, LeftOperand, RightOperand}, Ctx)
         NewCtx
       };
     op_plus -> {fun(Instr) -> LeftFun(Instr) + RightFun(Instr) end, NewCtx};
-    op_minus -> {fun(Instr) -> LeftFun(Instr) - RightFun(Instr) end, NewCtx}
+    op_minus -> {fun(Instr) -> LeftFun(Instr) - RightFun(Instr) end, NewCtx};
+    op_multiply -> {fun(Instr) -> LeftFun(Instr) * RightFun(Instr) end, NewCtx};
+    op_divide -> {fun(Instr) -> LeftFun(Instr) / RightFun(Instr) end, NewCtx};
   end;
 %%---
 transform_pattern({constant, _, Value}, Ctx) ->
