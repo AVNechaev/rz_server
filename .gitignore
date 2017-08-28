@@ -1,6 +1,7 @@
+_build
+.rebar3
 deps
 ebin
-rel/rz_server
 .idea/workspace.xml
 .idea/uiDesigner.xml
 .rebar
