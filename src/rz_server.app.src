@@ -1,16 +1,17 @@
 {application, rz_server,
- [
-  {description, "Zhilevsky' server robot"},
-  {vsn, "1"},
-  {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  lager,
-                  emysql,
-                  webmachine,
-                  parsetools
-                 ]},
-  {mod, { rz_server_app, []}},
-  {env, []}
- ]}.
+  [
+    {description, "Zhilevsky' server robot"},
+    {vsn, "1"},
+    {registered, []},
+    {applications, [
+      kernel,
+      stdlib,
+      lager,
+      emysql,
+      webmachine,
+      parsetools,
+      recon
+    ]},
+    {mod, {rz_server_app, []}},
+    {env, []}
+  ]}.
