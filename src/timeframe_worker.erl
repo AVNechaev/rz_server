@@ -329,11 +329,11 @@ update_sma_table(Data, Tid, KnownSMAs) ->
 populate_sma(Instrs, State) ->
   lager:info("START populating SMAs for the frame: ~p", [State#state.name]),
   SMAs = rz_util:get_env(rz_server, sma),
-  MaxDepth = lists:max([Depth || {_, _, Depth} <- SMAs]),
+  MaxDepth = lists:max([Depth || {_, _, Depth} <- SMAs]) + 30, %%stupid code to add max history
   ets:delete_all_objects(State#state.sma_tid),
   lists:foreach(
     fun(I) ->
-      Res = timeframe_util:populate_sma_queues(I, State#state.cache_table, MaxDepth, SMAs),
+      Res = timeframe_util:populate_sma_queues(State#state.history_name, I, State#state.cache_table, MaxDepth, SMAs),
       [
         ets:insert(State#state.sma_tid, {?SMA_QUEUE_KEY(I, SMAName), Q})
         || {SMAName, Q} <- Res

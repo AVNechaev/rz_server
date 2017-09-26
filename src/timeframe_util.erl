@@ -10,12 +10,18 @@
 -author("user").
 
 %% API
--export([candle_to_json/2, populate_sma_queues/4]).
+-export([candle_to_json/2, populate_sma_queues/5]).
 
 -include("internal.hrl").
 -include_lib("rz_util/include/rz_util.hrl").
 
--record(last_price_rec, {val :: float()}).
+-record(last_price_rec, {
+  open :: float(),
+  close :: float(),
+  high :: float(),
+  low :: float(),
+  vol :: float()}).
+
 -compile([{parse_transform, lager_transform}]).
 
 %%--------------------------------------------------------------------
@@ -73,14 +79,15 @@ candle_to_json(#candle{name = N, open = O, high = H, low = L, close = C, vol = V
 
 %%--------------------------------------------------------------------
 -spec populate_sma_queues(
+    HistName :: atom(),
     Instr :: instr_name(),
     TableName :: binary(),
     MaxDepth :: integer(),
     SMAs :: [{term()}]) -> [{SMAName :: atom(), Q :: #sma_q{}}].
-populate_sma_queues(Instr, TableName, MaxDepth, SMAs) ->
+populate_sma_queues(HistName, Instr, TableName, MaxDepth, SMAs) ->
   lager:info("Filling the sma queue [~p:~p]", [Instr, TableName]),
   SQL = [
-    "SELECT close as val FROM ",
+    "SELECT open,close,high,low,vol FROM ",
     TableName,
     " WHERE name='",
     Instr, "' ",
@@ -94,10 +101,21 @@ populate_sma_queues(Instr, TableName, MaxDepth, SMAs) ->
       record_info(fields, last_price_rec))),
   ResQ =
     lists:foldl(
-      fun(#last_price_rec{val = V}, Queues) ->
-        [sma_queue:store(V, Q) || Q <- Queues]
+      fun(Rec = #last_price_rec{close = V}, Queues) ->
+        SMAVals = [{Name, BinName, sma_queue:probe_sma(V, Q)} || {Q, Name, BinName} <- Queues],
+        Candle = #candle{
+          name = Instr,
+          open = Rec#last_price_rec.open,
+          close = V,
+          high = Rec#last_price_rec.high,
+          low = Rec#last_price_rec.low,
+          vol = Rec#last_price_rec.vol,
+          smas = SMAVals
+        },
+        online_history_worker:add_recent_candle(HistName, Candle),
+        [sma_queue:store(V, Q) || {Q, _, _} <- Queues]
       end,
-      [sma_queue:new(Depth) || {_, _, Depth} <- SMAs],
+      [{sma_queue:new(Depth), Name, BinName} || {Name, BinName, _, Depth} <- SMAs],
       Data
     ),
   lists:zip([N || {N, _, _} <- SMAs], ResQ).
