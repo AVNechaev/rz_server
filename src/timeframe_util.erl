@@ -87,7 +87,7 @@ candle_to_json(#candle{name = N, open = O, high = H, low = L, close = C, vol = V
 populate_sma_queues(HistName, Instr, TableName, MaxDepth, SMAs) ->
   lager:info("Filling the sma queue [~p:~p]", [Instr, TableName]),
   SQL = [
-    "SELECT open,close,high,low,vol FROM ",
+    "SELECT open,close,high,low,volume as vol FROM ",
     TableName,
     " WHERE name='",
     Instr, "' ",
