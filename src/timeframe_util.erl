@@ -113,9 +113,9 @@ populate_sma_queues(HistName, Instr, TableName, MaxDepth, SMAs) ->
           smas = SMAVals
         },
         online_history_worker:add_recent_candle(HistName, Candle),
-        [sma_queue:store(V, Q) || {Q, _, _} <- Queues]
+        [{sma_queue:store(V, Q), Name, BinName} || {Q, Name, BinName} <- Queues]
       end,
-      [{sma_queue:new(Depth), Name, BinName} || {Name, BinName, _, Depth} <- SMAs],
+      [{sma_queue:new(Depth), Name, BinName} || {Name, BinName, Depth} <- SMAs],
       Data
     ),
-  lists:zip([N || {N, _, _} <- SMAs], ResQ).
+  lists:zip([N || {N, _, _} <- SMAs], [Q || {Q, _, _} <- ResQ]).
