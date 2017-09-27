@@ -8,6 +8,11 @@
       stdlib,
       lager,
       emysql,
+      rz_util,
+      iqfeed_client,
+      erlmc,
+      erlang_localtime,
+      mochiweb,
       webmachine,
       parsetools,
       recon
