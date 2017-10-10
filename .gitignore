@@ -7,3 +7,4 @@ ebin
 .rebar
 src/patterns_lex.erl
 src/patterns_parser.erl
+_checkouts
