@@ -126,8 +126,8 @@ compile_pattern(#pattern{text = PatternText}) -> compile_pattern(PatternText);
 compile_pattern(PT) when is_binary(PT) -> compile_pattern(binary_to_list(PT));
 compile_pattern(PatternText) ->
   {ok, Tokens, _} = patterns_lex:string(PatternText),
-  {ok, ParsedPattern} = patterns_parser:parse(Tokens),
-  {ok, transform_pattern(ParsedPattern, [])}.
+  {ok, {ParsedPattern, ParsedVariables}} = patterns_parser:parse(Tokens),
+  {ok, transform_pattern(ParsedPattern, []), transform_variables(ParsedVariables)}.
 
 %%--------------------------------------------------------------------
 -spec transform_pattern(tuple(), list()) -> {pattern_fun(), list()}.
@@ -291,3 +291,10 @@ update_referenced_frames(FrameName, Ctx) ->
           lists:keyreplace(referenced_frames, 1, Ctx, {referenced_frames, [FrameName | RefFrames]})
       end
   end.
+
+%%--------------------------------------------------------------------
+-spec transform_variables(tuple() | undefined) -> var_fun().
+transform_variables(undefined) -> fun() -> [] end;
+transform_variables(T) ->
+  Vars = do_transform_vriables(T, []),
+  fun() -> lists:map(F)

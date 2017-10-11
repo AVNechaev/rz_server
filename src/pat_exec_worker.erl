@@ -25,7 +25,8 @@
 -include("internal.hrl").
 -record(pattern_data, {
   id :: pattern_index(),
-  f :: pattern_fun()
+  f :: pattern_fun(),
+  vf :: var_fun()
 }).
 
 -define(FIRES_ID(PatId, Instr), {PatId, Instr}).
