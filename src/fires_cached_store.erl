@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, store/3]).
+-export([start_link/2, store/4]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -30,7 +30,8 @@
 -record(cache_item, {
   pat_id :: pattern_index(),
   instr :: instr_name(),
-  ts :: binary()
+  ts :: binary(),
+  vartext :: binary()
 }).
 
 -record(state, {
@@ -50,22 +51,23 @@ start_link(MaxSize, Timeout) ->
   gen_server:start_link({local, ?SERVER}, ?MODULE, [MaxSize, Timeout], []).
 
 %%--------------------------------------------------------------------
--spec store(PatId :: pattern_index(), Instr :: instr_name(), UTCCandlesTime :: non_neg_integer()) -> ok.
-store(PatId, Instr, UTCCandlesTime) -> gen_server:cast(?SERVER, {store, PatId, Instr, UTCCandlesTime}).
+-spec store(PatId :: pattern_index(), Instr :: instr_name(), UTCCandlesTime :: non_neg_integer(), VarText :: iodata()) -> ok.
+store(PatId, Instr, UTCCandlesTime, VarText) -> gen_server:cast(?SERVER, {store, PatId, Instr, UTCCandlesTime, VarText}).
 
 %%%===================================================================
 %%% gen_server callbacks
 %%%===================================================================
 init([MaxSize, Timeout]) ->
-  emysql:prepare(?ADD_STMT, <<"insert into FIRES (id, instr, ts) VALUES (?, ?, ?)">>),
+  emysql:prepare(?ADD_STMT, <<"insert into FIRES (id, instr, ts, vartext) VALUES (?, ?, ?, ?)">>),
   {ok, #state{max_size = MaxSize, timeout = Timeout}}.
 
 %%--------------------------------------------------------------------
-handle_cast({store, PatId, Instr, UTCCandlesTime}, State) ->
+handle_cast({store, PatId, Instr, UTCCandlesTime, VarText}, State) ->
   Item = #cache_item{
     pat_id = PatId,
     instr = Instr,
-    ts = util:datetime_to_mysql(calendar:gregorian_seconds_to_datetime(UTCCandlesTime))
+    ts = util:datetime_to_mysql(calendar:gregorian_seconds_to_datetime(UTCCandlesTime)),
+    vartext = iolist_to_binary(VarText)
   },
   NewCached = [Item | State#state.cache],
   if
@@ -96,7 +98,8 @@ flush(Data, _State) ->
     VV = [
       Item#cache_item.pat_id,
       Item#cache_item.instr,
-      Item#cache_item.ts
+      Item#cache_item.ts,
+      Item#cache_item.vartext
     ],
     emysql:execute(
       mysql_candles_store,

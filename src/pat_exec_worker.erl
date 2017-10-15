@@ -80,13 +80,13 @@ handle_call({delete_pattern, PatId}, _From, State) ->
 %%--------------------------------------------------------------------
 handle_cast({check_patterns, Instr = {_, _, #candle{name = InstrName}}, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
   F =
-    fun(#pattern_data{id = Id, f = PatFun}) ->
+    fun(#pattern_data{id = Id, f = PatFun, vf = VarFun}) ->
       FiresId = ?FIRES_ID(Id, InstrName),
       case ets:lookup(Tid, FiresId) of
         [#fires_data{last_fired = LF}] when UTCCandlesTime - LF > Timeout ->
           case PatFun(Instr) of
             true ->
-              on_fired(Id, Instr, UTCCandlesTime, State),
+              on_fired(Id, Instr, VarFun, UTCCandlesTime, State),
               true = ets:update_element(Tid, FiresId, [{#fires_data.last_fired, UTCCandlesTime}]),
               ok;
             false ->
@@ -96,7 +96,7 @@ handle_cast({check_patterns, Instr = {_, _, #candle{name = InstrName}}, UTCCandl
         [] ->
           case PatFun(Instr) of
             true ->
-              on_fired(Id, Instr, UTCCandlesTime, State),
+              on_fired(Id, Instr, VarFun, UTCCandlesTime, State),
               true = ets:insert_new(Tid, #fires_data{id = FiresId, last_fired = UTCCandlesTime}),
               ok;
             false ->
@@ -117,7 +117,15 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-on_fired(PatIdx, {From, Frame, #candle{name = Instr, close = Close, smas = SMAS}}, UTCCandlesTime, _State) ->
+on_fired(PatIdx, {From, Frame, C = #candle{name = Instr, close = Close, smas = SMAS}}, VarFun, UTCCandlesTime, _State) ->
   lager:info("PATTERN ~p fired for {~p,~p[Close=~p, SMAs=~p]} at ~p", [PatIdx, From, {Frame, Instr}, Close, SMAS, UTCCandlesTime]),
-  fires_cached_store:store(PatIdx, Instr, UTCCandlesTime),
+  VarText = lists:map(
+    fun({Name, undefined}) ->
+      [Name, "=undefined;"];
+      ({Name, Val}) ->
+        [Name, io:format("=~f", [Val])]
+    end,
+    VarFun(C)
+  ),
+  fires_cached_store:store(PatIdx, Instr, UTCCandlesTime, VarText),
   ok.

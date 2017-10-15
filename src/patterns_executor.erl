@@ -63,7 +63,7 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({load_pattern, Pat}, _From, State) ->
   try
-    {ok, {Fun, Ctx}} = compile_pattern(Pat),
+    {ok, {Fun, Ctx}, VarFun} = compile_pattern(Pat),
     lager:info("Pattern compiled; Context: ~p", [Ctx]),
     ReferencedFrames = proplists:get_value(referenced_frames, Ctx, []),
     UsingCurrentCandle = proplists:get_value(use_current_candle, Ctx, false),
@@ -86,7 +86,7 @@ handle_call({load_pattern, Pat}, _From, State) ->
             ?NO_DATA -> false
           end
       end,
-    pat_exec_worker:load_pattern(elect(State), Pat, AnchoredFun),
+    pat_exec_worker:load_pattern(elect(State), Pat, {AnchoredFun, VarFun}),
     {reply, ok, State}
   catch
     M:E ->
@@ -292,9 +292,27 @@ update_referenced_frames(FrameName, Ctx) ->
       end
   end.
 
+
 %%--------------------------------------------------------------------
 -spec transform_variables(tuple() | undefined) -> var_fun().
 transform_variables(undefined) -> fun() -> [] end;
 transform_variables(T) ->
-  Vars = do_transform_vriables(T, []),
-  fun() -> lists:map(F)
+  Vars = do_transform_variables(T, []),
+  fun(C = #candle{}) ->
+    lists:map(
+      fun({Name, ExtractF}) ->
+        try
+          {Name, ExtractF(C)}
+        catch
+          ?NO_DATA ->
+            {Name, undefined}
+        end
+      end,
+      Vars)
+  end.
+%%--------------------------------------------------------------------
+
+do_transform_variables(undefined, Acc) -> lists:reverse(Acc);
+do_transform_variables({{variable, _, Name}, VarData, Rest}, Acc) ->
+  {F, _} = transform_pattern(VarData, []),
+  do_transform_variables(Rest, [{Name, F} || Acc]).
