@@ -295,7 +295,7 @@ update_referenced_frames(FrameName, Ctx) ->
 
 %%--------------------------------------------------------------------
 -spec transform_variables(tuple() | undefined) -> var_fun().
-transform_variables(undefined) -> fun() -> [] end;
+transform_variables(undefined) -> fun(_Candle) -> [] end;
 transform_variables(T) ->
   Vars = do_transform_variables(T, []),
   fun(C = #candle{}) ->
@@ -315,4 +315,4 @@ transform_variables(T) ->
 do_transform_variables(undefined, Acc) -> lists:reverse(Acc);
 do_transform_variables({{variable, _, Name}, VarData, Rest}, Acc) ->
   {F, _} = transform_pattern(VarData, []),
-  do_transform_variables(Rest, [{Name, F} || Acc]).
+  do_transform_variables(Rest, [{Name, F} | Acc]).

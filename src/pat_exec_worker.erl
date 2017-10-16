@@ -57,8 +57,8 @@ init([]) ->
   {ok, #state{tid = Tid, patterns = [], refire_timeout = RefireTimeout}}.
 
 %%--------------------------------------------------------------------
--spec load_pattern(ThisPid :: pid(), PatDesc :: #pattern{}, PatFun :: pattern_fun()) -> ok.
-load_pattern(ThisPid, PatDesc, PatFun) -> gen_server:call(ThisPid, {load_pattern, PatDesc, PatFun}).
+-spec load_pattern(ThisPid :: pid(), PatDesc :: #pattern{}, {PatFun :: pattern_fun(), VarFun :: var_fun()}) -> ok.
+load_pattern(ThisPid, PatDesc, {PatFun, VarFun}) -> gen_server:call(ThisPid, {load_pattern, PatDesc, {PatFun, VarFun}}).
 
 %%--------------------------------------------------------------------
 -spec delete_pattern(ThisPid :: pid(), PatId :: pattern_index()) -> ok.
@@ -69,9 +69,9 @@ delete_pattern(ThisPid, PatId) -> gen_server:call(ThisPid, {delete_pattern, PatI
 check_patterns(ThisPid, Instr, UTCCandlesTime) -> gen_server:cast(ThisPid, {check_patterns, Instr, UTCCandlesTime}).
 
 %%--------------------------------------------------------------------
-handle_call({load_pattern, #pattern{idx = Id, text = Txt}, PatFun}, _From, State) ->
+handle_call({load_pattern, #pattern{idx = Id, text = Txt}, {PatFun, VarFun}}, _From, State) ->
   lager:info("Loading pattern #~p: ~p", [Id, Txt]),
-  NewPatterns = [#pattern_data{id = Id, f = PatFun} | State#state.patterns],
+  NewPatterns = [#pattern_data{id = Id, f = PatFun, vf = VarFun} | State#state.patterns],
   {reply, ok, State#state{patterns = NewPatterns}};
 handle_call({delete_pattern, PatId}, _From, State) ->
   NewPatterns = lists:keydelete(PatId, #pattern_data.id, State#state.patterns),
@@ -117,15 +117,15 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-on_fired(PatIdx, {From, Frame, C = #candle{name = Instr, close = Close, smas = SMAS}}, VarFun, UTCCandlesTime, _State) ->
-  lager:info("PATTERN ~p fired for {~p,~p[Close=~p, SMAs=~p]} at ~p", [PatIdx, From, {Frame, Instr}, Close, SMAS, UTCCandlesTime]),
+on_fired(PatIdx, {From, Frame, C = #candle{name = Instr}}, VarFun, UTCCandlesTime, _State) ->
   VarText = lists:map(
     fun({Name, undefined}) ->
       [Name, "=undefined;"];
       ({Name, Val}) ->
-        [Name, io:format("=~f", [Val])]
+        [Name, io_lib:format("=~f;", [Val])]
     end,
     VarFun(C)
   ),
+  lager:info("PATTERN ~p fired for {~p,~p; ~p} at ~p", [PatIdx, From, {Frame, Instr}, VarText, UTCCandlesTime]),
   fires_cached_store:store(PatIdx, Instr, UTCCandlesTime, VarText),
   ok.
