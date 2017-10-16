@@ -66,7 +66,17 @@ handle_call({load_pattern, Pat}, _From, State) ->
     {ok, {Fun, Ctx}, VarFun} = compile_pattern(Pat),
     lager:info("Pattern compiled; Context: ~p", [Ctx]),
     ReferencedFrames = proplists:get_value(referenced_frames, Ctx, []),
-    UsingCurrentCandle = proplists:get_value(use_current_candle, Ctx, false),
+    UsingCurrentCandle =
+      case proplists:get_value(use_current_candle, Ctx, false) of
+        false -> false;
+        true ->
+          case proplists:get_value(enable_current_candle, rz_util:get_env(rz_server, patterns_executor), false) of
+            false ->
+              lager:info("Force disable using current candle!"),
+              false;
+            true -> true
+          end
+      end ,
     AnchoredFun =
       fun({tick, _FrameName, Instr}) ->
         case UsingCurrentCandle of
