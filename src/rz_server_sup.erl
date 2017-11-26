@@ -36,6 +36,20 @@ init([]) ->
       lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names)
     end,
 
+  GDAXTickFun =
+    fun(#{inst := Instr, time := Time, last_price := LastPrice}) ->
+      Tick = #tick{
+        ask = LastPrice,
+        bid = LastPrice,
+        last_price = LastPrice,
+        last_vol = 0,
+        name = Instr,
+        time = Time
+      },
+      lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names)
+    end,
+
+
   {ok, Instr} = rz_util:load_instr_csv(
     rz_util:get_env(iqfeed_client, instr_file),
     rz_util:get_env(iqfeed_client, instr_file_header),
@@ -91,6 +105,10 @@ init([]) ->
     {iq_sup, start_link, [TickFun]},
     permanent, infinity, supervisor, [iq_sup]},
 
+  GDAX = {gdax,
+    {gdax_chan, start_link, [GDAXTickFun]},
+    permanent, brutal_kill, worker, [gdax_chan]},
+
   Web = {webmachine,
     {webmachine_mochiweb, start, [[
       {ip, "127.0.0.1"},
@@ -116,6 +134,7 @@ init([]) ->
         PatternsExecutor,
         PatternsStore,
         IQFeed,
+        GDAX,
         Web
       ])}}.
 

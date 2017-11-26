@@ -3,9 +3,9 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/../iqfeed_client/iqfeed_client.iml" filepath="$PROJECT_DIR$/../iqfeed_client/iqfeed_client.iml" />
-      <module fileurl="file://$PROJECT_DIR$/deps/iqfeed_client/iqfeed_client.iml" filepath="$PROJECT_DIR$/deps/iqfeed_client/iqfeed_client.iml" />
       <module fileurl="file://$PROJECT_DIR$/rz_server.iml" filepath="$PROJECT_DIR$/rz_server.iml" />
       <module fileurl="file://$PROJECT_DIR$/../rz_util/rz_util.iml" filepath="$PROJECT_DIR$/../rz_util/rz_util.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../gdax/gdax_client/gdax_client.iml" filepath="$PROJECT_DIR$/../gdax/gdax_client/gdax_client.iml" />
     </modules>
   </component>
 </project>

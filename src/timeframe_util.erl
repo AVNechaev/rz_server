@@ -27,7 +27,7 @@
 %%--------------------------------------------------------------------
 -spec candle_to_json(#candle{}, CandleStartBin :: binary()) -> iolist().
 candle_to_json(#candle{name = N, open = O, high = H, low = L, close = C, vol = V, smas = SMAs}, CandleStartBin) ->
-  {Mega, Sec, Micro} = erlang:now(),
+  {Mega, Sec, Micro} = erlang:timestamp(),
   TSB = integer_to_binary(Micro + Sec * 1000000 + Mega * 1000000000000),
   OB = float_to_binary(O, [{decimals, 4}]),
   HB = float_to_binary(H, [{decimals, 4}]),

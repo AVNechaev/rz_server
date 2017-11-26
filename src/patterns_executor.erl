@@ -122,7 +122,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-elect(#state{workers = Workers}) -> lists:nth(random:uniform(length(Workers)), Workers).
+elect(#state{workers = Workers}) -> lists:nth(rand:uniform(length(Workers)), Workers).
 
 %%--------------------------------------------------------------------
 frame_filter_fun(Fun, UsedFrames, CurrentFrame, Instr) ->
