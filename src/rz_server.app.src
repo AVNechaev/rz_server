@@ -10,6 +10,7 @@
       emysql,
       rz_util,
       iqfeed_client,
+      gdax_client,
       erlmc,
       erlang_localtime,
       mochiweb,

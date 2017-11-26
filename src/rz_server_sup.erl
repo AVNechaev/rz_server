@@ -37,7 +37,7 @@ init([]) ->
     end,
 
   GDAXTickFun =
-    fun(#{inst := Instr, time := Time, last_price := LastPrice}) ->
+    fun(#{instr := Instr, time := Time, last_price := LastPrice}) ->
       Tick = #tick{
         ask = LastPrice,
         bid = LastPrice,
