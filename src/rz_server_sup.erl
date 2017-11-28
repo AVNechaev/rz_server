@@ -51,9 +51,8 @@ init([]) ->
 
 
   {ok, Instr} = rz_util:load_instr_csv(
-    rz_util:get_env(iqfeed_client, instr_file),
-    rz_util:get_env(iqfeed_client, instr_file_header),
-    rz_util:get_env(iqfeed_client, instr_defaults)
+    rz_util:get_env(rz_server, full_instr_file),
+    rz_util:get_env(rz_server, full_instr_file_header)
   ),
 
   MemCached = {memcached,
