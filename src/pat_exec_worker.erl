@@ -75,6 +75,10 @@ handle_call({load_pattern, #pattern{idx = Id, text = Txt}, {PatFun, VarFun}}, _F
   {reply, ok, State#state{patterns = NewPatterns}};
 handle_call({delete_pattern, PatId}, _From, State) ->
   NewPatterns = lists:keydelete(PatId, #pattern_data.id, State#state.patterns),
+  case length(NewPatterns) of
+    A when A == length(State#state.patterns) -> ok;
+    _ -> lager:info("Pattern ~p deleted", [PatId])
+  end,
   {reply, ok, State#state{patterns = NewPatterns}}.
 
 %%--------------------------------------------------------------------
@@ -126,6 +130,6 @@ on_fired(PatIdx, {From, Frame, C = #candle{name = Instr}}, VarFun, UTCCandlesTim
     end,
     VarFun(C)
   ),
-  lager:info("PATTERN ~p fired for {~p,~p; ~p} at ~p", [PatIdx, From, {Frame, Instr}, VarText, UTCCandlesTime]),
+  lager:debug("PATTERN ~p fired for {~p,~p; ~p} at ~p", [PatIdx, From, {Frame, Instr}, VarText, UTCCandlesTime]),
   fires_cached_store:store(PatIdx, Instr, UTCCandlesTime, VarText),
   ok.

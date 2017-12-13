@@ -104,6 +104,7 @@ handle_call({load_pattern, Pat}, _From, State) ->
   end;
 %%---
 handle_call({delete_pattern, PatId}, _From, State) ->
+  lager:info("Deleting pattern ~p", [PatId]),
   [pat_exec_worker:delete_pattern(Pid, PatId) || Pid <- State#state.workers],
   {reply, ok, State}.
 

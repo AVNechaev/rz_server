@@ -236,7 +236,7 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
   % в reinit_timer (duration + ReinitTimeout), думая, что за N секунд разгребутся остатки
   % тиков предыдущей секунды
   TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
-  lager:info("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(StartUTC)]),
+  lager:debug("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(StartUTC)]),
   StartBin = integer_to_binary(StartUTC - State#state.epoch_start),
   State#state{
     candles_start = StartUTC,
@@ -266,7 +266,7 @@ candle_to_memcached(C = #candle{name = N}, State) ->
 
 %%--------------------------------------------------------------------
 log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
-  lager:warning("Catch EXPIRED ticks: ~p", [T]),
+  lager:debug("Catch EXPIRED ticks: ~p", [T]),
   State#state{expired_ticks = 0};
 log_expired_ticks(State, _) -> State.
 
@@ -282,12 +282,12 @@ universal_to_candle_time(State) ->
 %%--------------------------------------------------------------------
 refire_on_flush_candles(State) ->
   CurrentTime = universal_to_candle_time(State),
-  lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
+  lager:debug("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
     fun(Candle = #candle{}, _) -> patterns_executor:check_patterns({candle, State#state.name, Candle}, CurrentTime) end,
     undefined,
     State#state.tid),
-  lager:info("CHECKING_FLUSH_PATTERNS completed"),
+  lager:debug("CHECKING_FLUSH_PATTERNS completed"),
   ok.
 
 %%--------------------------------------------------------------------
