@@ -103,7 +103,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%% Internal functions
 %%%===================================================================
 flush(Data, _State) ->
-  lager:info("Flushing candles cache..."),
+  lager:debug("Flushing candles cache..."),
   StoreFun = fun({CacheCtx, DT, C}) ->
     VV = [
       C#candle.name,
