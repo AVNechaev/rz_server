@@ -1,0 +1,24 @@
+{
+    "timeframe" : "H4",
+    "candles": 
+    [
+        {
+            "open" : 14,
+            "high":15,
+            "low":5,
+            "close":5
+        },
+        {
+            "open" : 6,
+            "high":17,
+            "low":1,
+            "close":11
+        },
+        {
+            "open" : 11,
+            "high":21,
+            "low":7,
+            "close":21
+        }
+    ]
+}
