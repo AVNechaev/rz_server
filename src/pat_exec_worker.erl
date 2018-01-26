@@ -125,6 +125,8 @@ on_fired(PatIdx, {From, Frame, C = #candle{name = Instr}}, VarFun, UTCCandlesTim
   VarText = lists:map(
     fun({Name, undefined}) ->
       [Name, "=undefined;"];
+      ({Name, IntVal}) when is_integer(IntVal) ->
+        [Name, io_lib:format("=~f;", [float(IntVal)])];
       ({Name, Val}) ->
         [Name, io_lib:format("=~f;", [Val])]
     end,
