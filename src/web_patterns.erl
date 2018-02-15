@@ -66,7 +66,12 @@ prepare_pattern_text({struct, Tokens}) ->
   NumOfCandles = erlang:length(Candles),
 %%  DO handles in history = Instr#D,n ... Instr#D,2
   [_FirstAND | Data] = lists:flatten(do_candles(NumOfCandles + 1, TF, Candles, [])),
-  iolist_to_binary(Data).
+  iolist_to_binary(
+    [
+      Data,
+      validate_variables(proplists:get_value(<<"variables">>, Tokens, <<>>))
+    ]).
+
 
 %%--------------------------------------------------------------------
 do_candles(2, TF, [{struct, Candle}], Acc) -> Acc ++ [<<" AND ">>, candle_color(2, Candle, TF)];
@@ -115,3 +120,8 @@ g_or_l(N1, N2) when N1 < N2 -> <<"<">>.
 test(Filename) ->
   {ok, D} = file:read_file(Filename),
   prepare_pattern_text(mochijson2:decode(D)).
+
+%%--------------------------------------------------------------------
+validate_variables(<<>>) -> <<>>;
+validate_variables(Data = <<$;, _/binary>>) -> Data;
+validate_variables(Data) when is_binary(Data) -> <<$;, Data/binary>>.
