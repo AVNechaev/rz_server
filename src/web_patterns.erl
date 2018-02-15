@@ -99,17 +99,18 @@ candle_color(CurNum, CandleJson, TF) ->
   CurNumBin = integer_to_binary(CurNum),
   [
     ?CANDLE_TEXT(TF, CurNumBin, <<"OPEN">>),
-    case Open > Close of
-      true -> <<">">>;
-      false -> <<"<">>
+    case Open of
+      _ when Open > Close -> <<">">>;
+      _ when Open == Close -> <<"=">>;
+      _ -> "<"
     end,
     ?CANDLE_TEXT(TF, CurNumBin, <<"CLOSE">>)
   ].
 
 %%--------------------------------------------------------------------
 g_or_l(N1, N2) when N1 > N2 -> <<">">>;
-%%check for integer-ness :-)
-g_or_l(N1, N2) when N1 =< N2 -> <<"<=">>.
+g_or_l(N1, N2) when N1 == N2 -> <<"=">>;
+g_or_l(N1, N2) when N1 < N2 -> <<"<">>.
 
 test(Filename) ->
   {ok, D} = file:read_file(Filename),
