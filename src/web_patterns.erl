@@ -69,7 +69,8 @@ prepare_pattern_text({struct, Tokens}) ->
   iolist_to_binary(
     [
       Data,
-      validate_variables(proplists:get_value(<<"variables">>, Tokens, <<>>))
+      <<" ">>,
+      proplists:get_value(<<"variables">>, Tokens, <<>>)
     ]).
 
 
@@ -120,8 +121,3 @@ g_or_l(N1, N2) when N1 < N2 -> <<"<">>.
 test(Filename) ->
   {ok, D} = file:read_file(Filename),
   prepare_pattern_text(mochijson2:decode(D)).
-
-%%--------------------------------------------------------------------
-validate_variables(<<>>) -> <<>>;
-validate_variables(Data = <<$;, _/binary>>) -> Data;
-validate_variables(Data) when is_binary(Data) -> <<$;, Data/binary>>.
