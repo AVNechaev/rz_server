@@ -17,7 +17,7 @@
 -type pattern_fun_arg() :: {tick, frame_name(), #candle{}} | {candle, frame_name(), #candle{}}.
 -type pattern_fun() :: fun((Instr :: pattern_fun_arg()) -> boolean()).
 -type var_data() :: {VarName :: iodata(), Value :: float() | undefined}.
--type var_fun() :: fun((InstrName :: instr_name()) -> [var_data()]).
+-type var_fun() :: fun((InstrName :: #candle{}) -> [var_data()]).
 
 -define(SNP_PREFIX, <<"SNP">>). %% префикс в паттерне для использования SNP500
 

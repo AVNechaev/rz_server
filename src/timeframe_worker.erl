@@ -24,8 +24,6 @@
 
 -include_lib("iqfeed_client/include/iqfeed_client.hrl").
 
--type fires_fun() :: fun((State :: tuple(), InstrName :: instr_name, TickCandleTime :: pos_integer()) -> ok).
-
 -include("internal.hrl").
 
 -record(state, {
@@ -52,6 +50,7 @@
   stock_open_time :: calendar:time()
 }).
 
+-type fires_fun() :: fun((State :: #state{}, Instr :: #candle{}, TickCandleTime :: pos_integer()) -> ok).
 -type frame_params() :: list().
 
 -define(MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG, 1000).
@@ -220,6 +219,7 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
     false -> flush_candles(State);
     true -> ok
   end,
+
   ets:delete_all_objects(State#state.tid),
   TickAtStockTZ = localtime:utc_timestamp_to_local(TickTime, StockTZ),
   ExpectedStart = (TickAtStockTZ div Duration) * Duration, %% stock timezone
@@ -257,11 +257,7 @@ flush_candles(State) ->
 
 %%--------------------------------------------------------------------
 candle_to_memcached(C = #candle{name = N}, State) ->
-  Instr = case is_binary(N) of
-            true -> N;
-            false -> list_to_binary(N)
-          end,
-  Key = <<Instr/binary, ",", (State#state.name_bin)/binary>>,
+  Key = <<N/binary, ",", (State#state.name_bin)/binary>>,
   erlmc:set(Key, erlang:iolist_to_binary(timeframe_util:candle_to_json(C, State#state.candles_start_bin))).
 
 %%--------------------------------------------------------------------
@@ -323,7 +319,8 @@ update_sma_table(Data, Tid, KnownSMAs) ->
       end,
       lists:map(IntF, KnownSMAs)
     end,
-  lists:map(F, Data).
+  lists:map(F, Data),
+  ok.
 
 %%--------------------------------------------------------------------
 populate_sma(Instrs, State) ->

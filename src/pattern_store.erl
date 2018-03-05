@@ -28,7 +28,7 @@
 -record(state, {}).
 
 -record(add_res, {id :: non_neg_integer()}).
--record(sel_res, {id :: non_neg_integer, expr :: binary() | list()}).
+-record(sel_res, {id :: non_neg_integer(), expr :: binary() | list()}).
 
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================

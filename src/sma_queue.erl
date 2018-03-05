@@ -24,7 +24,7 @@ new(Size) ->
     tail = 0,
     size = Size,
     act_size = 0,
-    val = 0
+    val = 0.0
   }.
 
 %%--------------------------------------------------------------------
@@ -59,8 +59,8 @@ eq(V1, V2) -> abs(V1 - V2) < 0.001.
 
 cre_test() ->
   [
-    ?assert(new(1) == #sma_q{data = {0}, head = 0, tail = 0, size = 1, val = 0, act_size = 0}),
-    ?assert(new(3) == #sma_q{data = {0, 0, 0}, head = 0, tail = 0, size = 3, val = 0, act_size = 0})
+    ?assert(new(1) == #sma_q{data = {0}, head = 0, tail = 0, size = 1, val = 0.0, act_size = 0}),
+    ?assert(new(3) == #sma_q{data = {0, 0, 0}, head = 0, tail = 0, size = 3, val = 0.0, act_size = 0})
   ].
 
 store_test() ->

@@ -20,7 +20,7 @@
   close :: float(),
   high :: float(),
   low :: float(),
-  vol :: float()}).
+  vol :: integer()}).
 
 -compile([{parse_transform, lager_transform}]).
 

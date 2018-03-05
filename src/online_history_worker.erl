@@ -56,7 +56,7 @@ storage_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_ets_history_buffer").
 add_recent_candle(ThisName, Candle) -> gen_server:call(ThisName, {add_recent_candle, Candle}).
 
 %%--------------------------------------------------------------------
--spec get_candle(StorageName :: atom(), Instr :: instr_name(), Length :: pos_integer(), Depth :: pos_integer()) -> {ok, #candle{}} | {error, not_found}.
+-spec get_candle(StorageName :: ets_limbuffer:storage_t(), Instr :: instr_name(), Length :: pos_integer(), Depth :: pos_integer()) -> {ok, #candle{}} | {error, not_found}.
 get_candle(StorageName, Instr, Length, Depth) ->
   ets_limbuffer:get(StorageName, Instr, buf_counter_name(Instr), Length, Depth).
 

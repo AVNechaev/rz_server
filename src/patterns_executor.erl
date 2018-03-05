@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_pattern/1, compile_pattern/1, check_patterns/2, delete_pattern/1]).
+-export([start_link/0, load_pattern/1, check_patterns/2, delete_pattern/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -25,6 +25,9 @@
 -define(SERVER, ?MODULE).
 
 -include("internal.hrl").
+
+-type logic_fun() :: fun((#candle{}) -> boolean()).
+-type number_fun() :: fun((#candle{}) -> number()).
 
 -record(state, {
   workers :: [pid()]
@@ -141,7 +144,7 @@ compile_pattern(PatternText) ->
   {ok, transform_pattern(ParsedPattern, []), transform_variables(ParsedVariables)}.
 
 %%--------------------------------------------------------------------
--spec transform_pattern(tuple(), list()) -> {pattern_fun(), list()}.
+-spec transform_pattern(tuple(), list()) -> {logic_fun() | number_fun(), list()}.
 transform_pattern({{two_op_logic, _, Operator}, LeftOperand, RightOperand}, Ctx) ->
   lager:info("Pattern operator ~p", [Operator]),
   {LeftFun, LCtx} = transform_pattern(LeftOperand, Ctx),
@@ -215,7 +218,7 @@ transform_pattern({instr, Line, Instr}, Ctx) ->
   end.
 
 %%--------------------------------------------------------------------
--spec transform_instr(Line :: non_neg_integer(), Data :: binary(), InstrType :: ordinal_instr | snp_instr, Ctx :: list()) -> {pattern_fun(), list()}.
+-spec transform_instr(Line :: non_neg_integer(), Data :: binary(), InstrType :: ordinal_instr | snp_instr, Ctx :: list()) -> {number_fun(), list()}.
 transform_instr(Line, <<"Price">>, InstrType, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
   transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, InstrType, Ctx);

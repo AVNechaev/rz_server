@@ -25,7 +25,7 @@
   maybe_push/5,
   delete_buffers/1]).
 
--type storage_t() :: ets:tid().
+-type storage_t() :: ets:tab() .
 -type buffer_name() :: binary() | list() | atom().
 
 -record(context, {
