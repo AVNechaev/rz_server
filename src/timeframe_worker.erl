@@ -282,7 +282,7 @@ universal_to_candle_time(State) ->
 %%--------------------------------------------------------------------
 refire_on_flush_candles(State) ->
   CurrentTime = universal_to_candle_time(State),
-  lager:debug("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
+  lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
     fun(Candle = #candle{}, _) -> patterns_executor:check_patterns({candle, State#state.name, Candle}, CurrentTime) end,
     undefined,
