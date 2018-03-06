@@ -107,7 +107,7 @@ handle_call({load_pattern, Pat}, _From, State) ->
     pat_exec_worker:load_pattern(elect(State), Pat, {AnchoredFun, VarFun}),
 
 %%  activation goes here:
-    [MinDurationFrame, _] = [Name || {Name, _} <- State#state.frames, RefName <- ReferencedFrames, Name == RefName],
+    [MinDurationFrame, _] = [Name || {Name, _} <- State#state.frames_list, RefName <- ReferencedFrames, Name == RefName],
     timeframe_worker:activate_fires(timeframe_worker:reg_name(MinDurationFrame)),
 
     {reply, ok, State}
