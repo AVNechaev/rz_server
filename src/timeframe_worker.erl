@@ -132,7 +132,7 @@ handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed 
     LastFlushed == undefined orelse Tick#tick.time > LastFlushed ->
       NewState = reinit_state(Tick#tick.time, State),
       Candle = update_current_candle(Tick, NewState),
-      (NewState#state.fires_fun)(State, Candle, universal_to_candle_time(NewState)),
+      (NewState#state.fires_fun)(State, Candle, calendar:datetime_to_gregorian_seconds(erlang:universaltime())),
       {noreply, NewState#state{empty = false}};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -147,7 +147,7 @@ handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}
                    true -> State
                  end,
       Candle = update_current_candle(Tick, NewState),
-      (NewState#state.fires_fun)(State, Candle, universal_to_candle_time(NewState)),
+      (NewState#state.fires_fun)(State, Candle, calendar:datetime_to_gregorian_seconds(erlang:universaltime())),
       {noreply, NewState};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
@@ -266,12 +266,12 @@ inactive_fires_fun(_, _, _) -> ok.
 
 %%--------------------------------------------------------------------
 %считает текущее время относительно времени начала свечи (которое может не совпадать с UTC, а идти с запаздыванием
-universal_to_candle_time(State) ->
-  calendar:datetime_to_gregorian_seconds(erlang:universaltime()) - State#state.candles_start_utc + State#state.candles_start.
+%%universal_to_candle_time(State) ->
+%%  calendar:datetime_to_gregorian_seconds(erlang:universaltime()) - State#state.candles_start_utc + State#state.candles_start.
 
 %%--------------------------------------------------------------------
 refire_on_flush_candles(State) ->
-  CurrentTime = universal_to_candle_time(State),
+  CurrentTime = calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
   lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
     fun(#candle{name = InstrName}, _) ->
