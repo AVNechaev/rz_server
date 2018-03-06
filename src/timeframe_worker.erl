@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/3, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2, set_instrs/2]).
+-export([start_link/3, reg_name/1, add_tick/2, storage_name/1, get_current_candle/2, set_instrs/2, activate_fires/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -73,6 +73,9 @@ reg_name(Name) -> list_to_atom(atom_to_list(Name) ++ "_frame_worker").
 %%--------------------------------------------------------------------
 -spec add_tick(ThisName :: atom(), Tick :: #tick{}) -> ok.
 add_tick(ThisName, Tick) -> gen_server:cast(ThisName, {add_tick, Tick}).
+
+-spec activate_fires(ThisName :: atom()) -> ok.
+activate_fires(ThisName) -> gen_server:cast(ThisName, activate_fires).
 
 %%--------------------------------------------------------------------
 -spec storage_name(FrameName :: atom()) -> atom().
@@ -148,7 +151,11 @@ handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}
       {noreply, NewState};
     true ->
       {noreply, log_expired_ticks(State#state{expired_ticks = State#state.expired_ticks + 1}, ?MAX_SKIP_EXPIRED_TICKS_BEFORE_LOG)}
-  end.
+  end;
+%%---
+handle_cast(activate_fires, State) ->
+  refire_on_flush_candles(State),
+  {noreply, State}.
 
 %%--------------------------------------------------------------------
 handle_info({timeout, _, reinit}, State = #state{empty = true}) -> {noreply, State};
@@ -217,7 +224,7 @@ update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, 
 reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = RenitTO, stock_timezone = StockTZ}) ->
   case State#state.empty of
     false -> flush_candles(State);
-    true -> ok
+    true -> refire_on_flush_candles(State) %% шлем фиктивные срабатывания (для активации, когда пустая свеча - нет данных
   end,
 
   ets:delete_all_objects(State#state.tid),
@@ -267,7 +274,7 @@ log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
 log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
-active_fires_fun(State, Candle, TickCandleTime) -> patterns_executor:check_patterns({tick, State#state.name, Candle}, TickCandleTime).
+active_fires_fun(State, #candle{name = InstrName}, TickCandleTime) -> patterns_executor:check_patterns({tick, State#state.name, InstrName}, TickCandleTime).
 inactive_fires_fun(_, _, _) -> ok.
 
 %%--------------------------------------------------------------------
@@ -280,7 +287,7 @@ refire_on_flush_candles(State) ->
   CurrentTime = universal_to_candle_time(State),
   lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
-    fun(Candle = #candle{}, _) -> patterns_executor:check_patterns({candle, State#state.name, Candle}, CurrentTime) end,
+    fun(#candle{name = InstrName}, _) -> patterns_executor:check_patterns({candle, State#state.name, InstrName}, CurrentTime) end,
     undefined,
     State#state.tid),
   lager:debug("CHECKING_FLUSH_PATTERNS completed"),

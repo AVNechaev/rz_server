@@ -26,11 +26,12 @@
 
 -include("internal.hrl").
 
--type logic_fun() :: fun((#candle{}) -> boolean()).
--type number_fun() :: fun((#candle{}) -> number()).
+-type logic_fun() :: fun((instr_name()) -> boolean()).
+-type number_fun() :: fun((instr_name()) -> number()).
 
 -record(state, {
-  workers :: [pid()]
+  workers :: [pid()],
+  frames_list :: [{Name :: atom(), Duration :: non_neg_integer() | undefined}]
 }).
 
 -define(NO_DATA, no_data).
@@ -61,7 +62,11 @@ init([]) ->
   Cfg = rz_util:get_env(rz_server, patterns_executor),
   Workers = proplists:get_value(workers, Cfg),
   PIDs = [begin {ok, P} = pat_exec_worker:start_link(), P end || _ <- lists:seq(1, Workers)],
-  {ok, #state{workers = PIDs}}.
+  SortedByDuration = lists:sort(
+    fun({_N1, D1}, {_N2, D2}) -> D1 < D2 end,
+    [{Name, proplists:get_value(duration, Params)} || {Name, Params} <- rz_util:get_env(rz_server, frames)]
+  ),
+  {ok, #state{workers = PIDs, frames_list = SortedByDuration}}.
 
 %%--------------------------------------------------------------------
 handle_call({load_pattern, Pat}, _From, State) ->
@@ -79,7 +84,7 @@ handle_call({load_pattern, Pat}, _From, State) ->
               false;
             true -> true
           end
-      end ,
+      end,
     AnchoredFun =
       fun({tick, _FrameName, Instr}) ->
         case UsingCurrentCandle of
@@ -100,6 +105,11 @@ handle_call({load_pattern, Pat}, _From, State) ->
           end
       end,
     pat_exec_worker:load_pattern(elect(State), Pat, {AnchoredFun, VarFun}),
+
+%%  activation goes here:
+    [MinDurationFrame, _] = [Name || {Name, _} <- State#state.frames, RefName <- ReferencedFrames, Name == RefName],
+    timeframe_worker:activate_fires(timeframe_worker:reg_name(MinDurationFrame)),
+
     {reply, ok, State}
   catch
     M:E ->
@@ -197,7 +207,7 @@ transform_pattern({instr, _Line, {sma, SMAType, Text}}, Ctx) ->
   CurStorageName = timeframe_worker:storage_name(FrameName),
   lager:info("Pattern operand get_SMA (~p:~p)", [FrameName, SMAType]),
   {
-    fun(#candle{name = Instr}) ->
+    fun(Instr) ->
       case timeframe_worker:get_current_candle(Instr, CurStorageName) of
         {ok, #candle{smas = SMAs}} ->
           case lists:keyfind(SMAType, 1, SMAs) of
@@ -246,12 +256,12 @@ transform_instr(_, Data, InstrType, Ctx) ->
                        true -> Ctx;
                        undefined -> Ctx ++ [{use_current_candle, true}]
                      end,
-        {fun(#candle{name = Name}) -> timeframe_worker:get_current_candle(Name, CurStorageName)  end, UpdatedCtx};
+        {fun(Name) -> timeframe_worker:get_current_candle(Name, CurStorageName) end, UpdatedCtx};
       _ ->
         OffInt = binary_to_integer(Offset) - 2,
         lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
         {
-          fun(#candle{name = Name}) ->
+          fun(Name) ->
             online_history_worker:get_candle(HistStorageName, Name, Length, OffInt)
           end,
           Ctx}

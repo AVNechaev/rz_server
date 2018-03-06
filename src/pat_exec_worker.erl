@@ -82,7 +82,7 @@ handle_call({delete_pattern, PatId}, _From, State) ->
   {reply, ok, State#state{patterns = NewPatterns}}.
 
 %%--------------------------------------------------------------------
-handle_cast({check_patterns, Instr = {_, _, #candle{name = InstrName}}, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
+handle_cast({check_patterns, Instr = {_, _, InstrName}, UTCCandlesTime}, State = #state{tid = Tid, refire_timeout = Timeout}) ->
   F =
     fun(#pattern_data{id = Id, f = PatFun, vf = VarFun}) ->
       FiresId = ?FIRES_ID(Id, InstrName),
@@ -121,7 +121,7 @@ code_change(_OldVsn, State, _Extra) -> {ok, State}.
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
-on_fired(PatIdx, {From, Frame, C = #candle{name = Instr}}, VarFun, UTCCandlesTime, _State) ->
+on_fired(PatIdx, {From, Frame, Instr}, VarFun, UTCCandlesTime, _State) ->
   VarText = lists:map(
     fun({Name, undefined}) ->
       [Name, "=undefined;"];
@@ -130,7 +130,7 @@ on_fired(PatIdx, {From, Frame, C = #candle{name = Instr}}, VarFun, UTCCandlesTim
       ({Name, Val}) ->
         [Name, io_lib:format("=~f;", [Val])]
     end,
-    VarFun(C)
+    VarFun(Instr)
   ),
   lager:debug("PATTERN ~p fired for {~p,~p; ~p} at ~p", [PatIdx, From, {Frame, Instr}, VarText, UTCCandlesTime]),
   fires_cached_store:store(PatIdx, Instr, UTCCandlesTime, VarText),
