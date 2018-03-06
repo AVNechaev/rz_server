@@ -30,8 +30,7 @@
 -type number_fun() :: fun((instr_name()) -> number()).
 
 -record(state, {
-  workers :: [pid()],
-  frames_list :: [{Name :: atom(), Duration :: non_neg_integer() | undefined}]
+  workers :: [pid()]
 }).
 
 -define(NO_DATA, no_data).
@@ -43,7 +42,7 @@
 start_link() -> gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%--------------------------------------------------------------------
--spec load_pattern(Pat :: #pattern{}) -> ok | {error, Reason :: term()}.
+-spec load_pattern(Pat :: #pattern{}) -> {ok, RefFrames :: [atom()]} | {error, Reason :: term()}.
 load_pattern(Pat) -> gen_server:call(?SERVER, {load_pattern, Pat}).
 
 %%--------------------------------------------------------------------
@@ -62,11 +61,7 @@ init([]) ->
   Cfg = rz_util:get_env(rz_server, patterns_executor),
   Workers = proplists:get_value(workers, Cfg),
   PIDs = [begin {ok, P} = pat_exec_worker:start_link(), P end || _ <- lists:seq(1, Workers)],
-  SortedByDuration = lists:sort(
-    fun({_N1, D1}, {_N2, D2}) -> D1 < D2 end,
-    [{Name, proplists:get_value(duration, Params)} || {Name, Params} <- rz_util:get_env(rz_server, frames)]
-  ),
-  {ok, #state{workers = PIDs, frames_list = SortedByDuration}}.
+  {ok, #state{workers = PIDs}}.
 
 %%--------------------------------------------------------------------
 handle_call({load_pattern, Pat}, _From, State) ->
@@ -106,11 +101,7 @@ handle_call({load_pattern, Pat}, _From, State) ->
       end,
     pat_exec_worker:load_pattern(elect(State), Pat, {AnchoredFun, VarFun}),
 
-%%  activation goes here:
-    [MinDurationFrame, _] = [Name || {Name, _} <- State#state.frames_list, RefName <- ReferencedFrames, Name == RefName],
-    timeframe_worker:activate_fires(timeframe_worker:reg_name(MinDurationFrame)),
-
-    {reply, ok, State}
+    {reply, {ok, ReferencedFrames}, State}
   catch
     M:E ->
       {reply, {error, {M, E, erlang:get_stacktrace()}}, State}
@@ -322,11 +313,11 @@ update_referenced_frames(FrameName, Ctx) ->
 transform_variables(undefined) -> fun(_Candle) -> [] end;
 transform_variables(T) ->
   Vars = do_transform_variables(T, []),
-  fun(C = #candle{}) ->
+  fun(Instr) ->
     lists:map(
       fun({Name, ExtractF}) ->
         try
-          {Name, ExtractF(C)}
+          {Name, ExtractF(Instr)}
         catch
           ?NO_DATA ->
             {Name, undefined}

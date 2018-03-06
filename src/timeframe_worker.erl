@@ -124,7 +124,7 @@ init([Name, Params, Instrs]) ->
     stock_open_time = proplists:get_value(time, StockOpenParams)
   },
   populate_sma(Instrs, State),
-  {ok, State}.
+  {ok, reset_candle_time(calendar:datetime_to_gregorian_seconds(erlang:universaltime()), State)}.
 
 %%--------------------------------------------------------------------
 handle_cast({add_tick, Tick}, State = #state{empty = true, candles_last_flushed = LastFlushed}) ->
@@ -221,37 +221,23 @@ update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, 
   end.
 
 %%--------------------------------------------------------------------
-reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = RenitTO, stock_timezone = StockTZ}) ->
+reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = RenitTO}) ->
   case State#state.empty of
     false -> flush_candles(State);
-    true -> refire_on_flush_candles(State) %% шлем фиктивные срабатывания (для активации, когда пустая свеча - нет данных
+    true -> ok
+%%      refire_on_flush_candles(State) %% шлем фиктивные срабатывания (для активации, когда пустая свеча - нет данных
   end,
 
   ets:delete_all_objects(State#state.tid),
-  TickAtStockTZ = localtime:utc_timestamp_to_local(TickTime, StockTZ),
-  ExpectedStart = (TickAtStockTZ div Duration) * Duration, %% stock timezone
-  {StockDay, _} = calendar:gregorian_seconds_to_datetime(TickAtStockTZ),
-  StockOpen = calendar:datetime_to_gregorian_seconds({StockDay, State#state.stock_open_time}),
-  StartTZ = if
-            ExpectedStart < StockOpen -> StockOpen;
-            true -> ExpectedStart
-          end,
-  StartUTC = localtime:local_timestamp_to_utc(StartTZ, StockTZ),
   % если на момент срабатывания таймера есть еще тики в очереди, то надо сначала
   % обработать их; иначе при флуде тиков происходит повторная инициализация свечки
   % как вариант, можно при достаточной пропускной способности поставить
   % в reinit_timer (duration + ReinitTimeout), думая, что за N секунд разгребутся остатки
   % тиков предыдущей секунды
   TRef = erlang:start_timer((Duration + RenitTO) * 1000, self(), reinit),
-  lager:debug("REINIT CANDLE DURATON ~p AT ~p", [State#state.duration, calendar:gregorian_seconds_to_datetime(StartUTC)]),
-  StartBin = integer_to_binary(StartUTC - State#state.epoch_start),
-  State#state{
-    candles_start = StartUTC,
-    candles_start_bin = StartBin,
-    candles_start_utc = calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
-    empty = true,
-    current_tref = TRef,
-    candles_last_flushed = StartUTC}.
+  lager:debug("REINIT CANDLE DURATON ~p", [State#state.duration]),
+  NewState = reset_candle_time(TickTime, State),
+  NewState#state{current_tref = TRef}.
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
@@ -274,7 +260,8 @@ log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
 log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
-active_fires_fun(State, #candle{name = InstrName}, TickCandleTime) -> patterns_executor:check_patterns({tick, State#state.name, InstrName}, TickCandleTime).
+active_fires_fun(State, #candle{name = InstrName}, TickCandleTime) ->
+  patterns_executor:check_patterns({tick, State#state.name, InstrName}, TickCandleTime).
 inactive_fires_fun(_, _, _) -> ok.
 
 %%--------------------------------------------------------------------
@@ -287,7 +274,8 @@ refire_on_flush_candles(State) ->
   CurrentTime = universal_to_candle_time(State),
   lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
-    fun(#candle{name = InstrName}, _) -> patterns_executor:check_patterns({candle, State#state.name, InstrName}, CurrentTime) end,
+    fun(#candle{name = InstrName}, _) ->
+      patterns_executor:check_patterns({candle, State#state.name, InstrName}, CurrentTime) end,
     undefined,
     State#state.tid),
   lager:debug("CHECKING_FLUSH_PATTERNS completed"),
@@ -323,7 +311,7 @@ update_sma_table(Data, Tid, KnownSMAs) ->
           [] -> ok;
           [{_, Q}] -> ets:update_element(Tid, Key, {2, sma_queue:store(V, Q)})
         end
-      end,
+             end,
       lists:map(IntF, KnownSMAs)
     end,
   lists:map(F, Data),
@@ -347,3 +335,22 @@ populate_sma(Instrs, State) ->
   ),
   lager:info("SMA Population finished for the frame: ~p.", [State#state.name]).
 
+%%--------------------------------------------------------------------
+-spec reset_candle_time(TS :: integer(), State :: #state{}) -> #state{}.
+reset_candle_time(TS, State = #state{duration = Duration, stock_timezone = StockTZ}) ->
+  TickAtStockTZ = localtime:utc_timestamp_to_local(TS, StockTZ),
+  ExpectedStart = (TickAtStockTZ div Duration) * Duration, %% stock timezone
+  {StockDay, _} = calendar:gregorian_seconds_to_datetime(TickAtStockTZ),
+  StockOpen = calendar:datetime_to_gregorian_seconds({StockDay, State#state.stock_open_time}),
+  StartTZ = if
+              ExpectedStart < StockOpen -> StockOpen;
+              true -> ExpectedStart
+            end,
+  StartUTC = localtime:local_timestamp_to_utc(StartTZ, StockTZ),
+  StartBin = integer_to_binary(StartUTC - State#state.epoch_start),
+  State#state{
+    candles_start = StartUTC,
+    candles_start_bin = StartBin,
+    candles_start_utc = calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
+    empty = true,
+    candles_last_flushed = StartUTC}.

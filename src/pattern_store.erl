@@ -25,7 +25,8 @@
 -include("internal.hrl").
 -define(SERVER, ?MODULE).
 
--record(state, {}).
+-type frame_desc() :: {Name :: atom(), Duration :: non_neg_integer() | undefined}.
+-record(state, {frames_list :: [frame_desc()]}).
 
 -record(add_res, {id :: non_neg_integer()}).
 -record(sel_res, {id :: non_neg_integer(), expr :: binary() | list()}).
@@ -64,7 +65,11 @@ get_patterns_indexes() -> gen_server:call(?SERVER, get_patterns_indexes).
 %%% gen_server callbacks
 %%%===================================================================
 init([]) ->
-  {ok, #state{}}.
+  SortedByDuration = lists:sort(
+    fun({_N1, D1}, {_N2, D2}) -> D1 < D2 end,
+    [{Name, proplists:get_value(duration, Params)} || {Name, Params} <- rz_util:get_env(rz_server, frames)]
+  ),
+  {ok, #state{frames_list = SortedByDuration}}.
 
 %%--------------------------------------------------------------------
 handle_call({add_pattern, PatternText}, _From, State) ->
@@ -73,7 +78,8 @@ handle_call({add_pattern, PatternText}, _From, State) ->
   lager:info("STORE pattern: ~p AS ~p", [PatternText, Id]),
   Pattern = pt_to_pattern(Id, PatternText),
   case patterns_executor:load_pattern(Pattern) of
-    ok ->
+    {ok, RefFrames} ->
+      activate_pattern(RefFrames, State#state.frames_list),
       {reply, {ok, Pattern}, State};
     {error, What} ->
       lager:warning("An error occured when adding a pattern: ~p", [What]),
@@ -108,10 +114,11 @@ handle_call({replace_pattern, Id, NewText}, _From, State) ->
     _ ->
       patterns_executor:delete_pattern(Id),
       case patterns_executor:load_pattern(Pattern) of
-        ok ->
+        {ok, RefFrames} ->
           emysql:execute(
             mysql_config_store,
             <<"update PATTERNS set expr='", NewText/binary,"' where ID=", IdBin/binary>>),
+          activate_pattern(RefFrames, State#state.frames_list),
           {reply, ok, State};
         {error, What} ->
           lager:warning("An error occured when adding a pattern: ~p", [What]),
@@ -135,7 +142,7 @@ handle_call({remove_pattern, Id}, _From, State) ->
 %%---
 handle_call(init_patterns, _From, State) ->
   [
-    ok = patterns_executor:load_pattern(pt_to_pattern(Id, Text))
+    {ok, _} = patterns_executor:load_pattern(pt_to_pattern(Id, Text))
     || #sel_res{id = Id, expr = Text} <-
     emysql:as_record(
       emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
@@ -171,3 +178,10 @@ pt_to_pattern(Idx, Text) when is_binary(Text) ->
     text = Text,
     md5 = erlang:md5(Text)
   }.
+
+%%--------------------------------------------------------------------
+-spec activate_pattern(RefFrames :: [atom()], FramesList :: [frame_desc()]) -> ok.
+activate_pattern(ReferencedFrames, FramesList) ->
+  %%  activation goes here:
+  [MinDurationFrame | _] = [Name || {Name, _} <- FramesList, RefName <- ReferencedFrames, Name == RefName],
+  timeframe_worker:activate_fires(timeframe_worker:reg_name(MinDurationFrame)).
