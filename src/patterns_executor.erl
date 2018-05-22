@@ -212,27 +212,23 @@ transform_pattern({instr, _Line, {sma, SMAType, Text}}, Ctx) ->
 %%---
 transform_pattern({instr, Line, Instr}, Ctx) when is_list(Instr) ->
   transform_pattern({instr, Line, list_to_binary(Instr)}, Ctx);
-transform_pattern({instr, Line, Instr}, Ctx) ->
-  case binary:split(Instr, <<"#">>) of
-    [<<"Instr">>, Data] -> transform_instr(Line, Data, ordinal_instr, Ctx);
-    [?SNP_PREFIX, Data] -> transform_instr(Line, Data, snp_instr, Ctx)
-  end.
+transform_pattern({instr, Line, <<"Instr#", Data/binary>>}, Ctx) -> transform_instr(Line, Data, Ctx).
 
 %%--------------------------------------------------------------------
--spec transform_instr(Line :: non_neg_integer(), Data :: binary(), InstrType :: ordinal_instr | snp_instr, Ctx :: list()) -> {number_fun(), list()}.
-transform_instr(Line, <<"Price">>, InstrType, Ctx) ->
+-spec transform_instr(Line :: non_neg_integer(), Data :: binary(), Ctx :: list()) -> {number_fun(), list()}.
+transform_instr(Line, <<"Price">>, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, InstrType, Ctx);
+  transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, Ctx);
 %%---
-transform_instr(Line, <<"Bid">>, InstrType, Ctx) ->
+transform_instr(Line, <<"Bid">>, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#BID">>, InstrType, Ctx);
+  transform_instr(Line, <<DefFrame/binary, ",1#BID">>, Ctx);
 %%---
-transform_instr(Line, <<"Ask">>, InstrType, Ctx) ->
+transform_instr(Line, <<"Ask">>, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#ASK">>, InstrType, Ctx);
+  transform_instr(Line, <<DefFrame/binary, ",1#ASK">>, Ctx);
 %%---
-transform_instr(_, Data, InstrType, Ctx) ->
+transform_instr(_, Data, Ctx) ->
   [FrameOff, Val] = binary:split(Data, <<"#">>),
   [Frame, Offset] = binary:split(FrameOff, <<",">>),
   FrameName = proplists:get_value(Frame, rz_util:get_env(rz_server, pattern_names_to_frames)),
@@ -269,31 +265,15 @@ transform_instr(_, Data, InstrType, Ctx) ->
       <<"ASK">> -> fun(#candle{ask = V}) -> V end;
       <<"VOLUME">> -> fun(#candle{vol = V}) -> V end
     end,
-  case InstrType of
-    ordinal_instr ->
-      {
-        fun(Instr) ->
-          case GetCandleFun(Instr) of
-            {ok, C} -> ExtrFun(C);
-            {error, not_found} -> throw(?NO_DATA)
-          end
-        end,
-        NewCtx
-      };
-    snp_instr ->
-      SNPName = rz_util:get_env(rz_server, snp_instr_name),
-      SNPNameString = binary_to_list(SNPName),
-      {
-        fun(Name) when Name == SNPName orelse Name == SNPNameString ->
-          case GetCandleFun(SNPName) of
-            {ok, C} -> ExtrFun(C);
-            {error, not_found} -> throw(?NO_DATA)
-          end;
-          (_) -> throw(?NO_DATA)
-        end,
-        NewCtx
-      }
-  end.
+  {
+    fun(Instr) ->
+      case GetCandleFun(Instr) of
+        {ok, C} -> ExtrFun(C);
+        {error, not_found} -> throw(?NO_DATA)
+      end
+    end,
+    NewCtx
+  }.
 
 %%--------------------------------------------------------------------
 update_referenced_frames(FrameName, Ctx) ->
