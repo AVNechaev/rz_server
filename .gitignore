@@ -8,4 +8,5 @@ ebin
 src/patterns_lex.erl
 src/patterns_parser.erl
 _checkouts
-.idea/markdown-navigator*
+.idea/*
+!.idea/modules.xml
