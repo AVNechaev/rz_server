@@ -154,7 +154,7 @@ handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}
   end;
 %%---
 handle_cast(activate_fires, State) ->
-  derivatives:compute(storage_name(State#state.name)),
+  update_derivatives(State),
   refire_on_flush_candles(State),
   {noreply, State}.
 
@@ -242,7 +242,7 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
-  derivatives:compute(storage_name(State#state.name)),
+  update_derivatives(State),
   DT = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
   Data = ets:tab2list(State#state.tid),
   update_sma_table(Data, State#state.sma_tid, State#state.known_smas),
@@ -263,7 +263,7 @@ log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
 active_fires_fun(State, #candle{name = InstrName}, TickCandleTime) ->
-  derivatives:compute(storage_name(State#state.name)),
+  update_derivatives(State),
   patterns_executor:check_patterns({tick, State#state.name, InstrName}, TickCandleTime).
 inactive_fires_fun(_, _, _) -> ok.
 
@@ -363,3 +363,12 @@ reset_candle_time(TS, State = #state{duration = Duration, stock_timezone = Stock
     candles_start_utc = calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
     empty = true,
     candles_last_flushed = StartUTC}.
+
+%%--------------------------------------------------------------------
+update_derivatives(State) ->
+  lists:map(
+    fun(#candle{name = N, bid = B, ask = A, close = C, vol = V}) ->
+      update_current_candle(#tick{name = N, ask = A, bid = B, last_vol = V, last_price = C}, State)
+    end,
+    derivatives:compute(storage_name(State#state.name))
+  ).

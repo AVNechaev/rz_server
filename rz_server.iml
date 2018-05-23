@@ -12,6 +12,8 @@
     <content url="file://$MODULE_DIR$">
       <sourceFolder url="file://$MODULE_DIR$/src" isTestSource="false" />
       <sourceFolder url="file://$MODULE_DIR$/src/hrl" type="erlang-include" />
+      <sourceFolder url="file://$MODULE_DIR$/_checkouts/erlang_localtime/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/_checkouts/erlang_localtime/include" type="erlang-include" />
       <excludeFolder url="file://$MODULE_DIR$/_build" />
       <excludeFolder url="file://$MODULE_DIR$/_checkouts" />
     </content>
