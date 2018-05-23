@@ -212,23 +212,30 @@ transform_pattern({instr, _Line, {sma, SMAType, Text}}, Ctx) ->
 %%---
 transform_pattern({instr, Line, Instr}, Ctx) when is_list(Instr) ->
   transform_pattern({instr, Line, list_to_binary(Instr)}, Ctx);
-transform_pattern({instr, Line, <<"Instr#", Data/binary>>}, Ctx) -> transform_instr(Line, Data, Ctx).
+transform_pattern({instr, Line, <<"Instr#", Data/binary>>}, Ctx) -> transform_instr(Line, Data, undefined, Ctx);
+%%---
+transform_pattern({fixed_instr, Line, Instr}, Ctx) when is_list(Instr) ->
+  transform_pattern({fixed_instr, Line, list_to_binary(Instr)}, Ctx);
+transform_pattern({fixed_instr, Line, <<"FIXED_", Rest/binary>>}, Ctx) ->
+  [FixedInstr, Data] = binary:split(Rest, <<"#">>),
+  transform_instr(Line, Data, FixedInstr, Ctx).
+
 
 %%--------------------------------------------------------------------
--spec transform_instr(Line :: non_neg_integer(), Data :: binary(), Ctx :: list()) -> {number_fun(), list()}.
-transform_instr(Line, <<"Price">>, Ctx) ->
+-spec transform_instr(Line :: non_neg_integer(), Data :: binary(), FixedInstr :: instr_name() | undefined, Ctx :: list()) -> {number_fun(), list()}.
+transform_instr(Line, <<"Price">>, FixedInstr, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, Ctx);
+  transform_instr(Line, <<DefFrame/binary, ",1#PRICE">>, FixedInstr, Ctx);
 %%---
-transform_instr(Line, <<"Bid">>, Ctx) ->
+transform_instr(Line, <<"Bid">>, FixedInstr, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#BID">>, Ctx);
+  transform_instr(Line, <<DefFrame/binary, ",1#BID">>, FixedInstr, Ctx);
 %%---
-transform_instr(Line, <<"Ask">>, Ctx) ->
+transform_instr(Line, <<"Ask">>, FixedInstr, Ctx) ->
   DefFrame = proplists:get_value(frame_for_current_candle, rz_util:get_env(rz_server, patterns_executor)),
-  transform_instr(Line, <<DefFrame/binary, ",1#ASK">>, Ctx);
+  transform_instr(Line, <<DefFrame/binary, ",1#ASK">>, FixedInstr, Ctx);
 %%---
-transform_instr(_, Data, Ctx) ->
+transform_instr(_, Data, FixedInstr, Ctx) ->
   [FrameOff, Val] = binary:split(Data, <<"#">>),
   [Frame, Offset] = binary:split(FrameOff, <<",">>),
   FrameName = proplists:get_value(Frame, rz_util:get_env(rz_server, pattern_names_to_frames)),
@@ -243,15 +250,31 @@ transform_instr(_, Data, Ctx) ->
                        true -> Ctx;
                        undefined -> Ctx ++ [{use_current_candle, true}]
                      end,
-        {fun(Name) -> timeframe_worker:get_current_candle(Name, CurStorageName) end, UpdatedCtx};
+        case FixedInstr of
+          undefined ->
+            {fun(Name) -> timeframe_worker:get_current_candle(Name, CurStorageName) end, UpdatedCtx};
+          _ ->
+            {fun(_Name) -> timeframe_worker:get_current_candle(FixedInstr, CurStorageName) end, UpdatedCtx}
+        end;
       _ ->
         OffInt = binary_to_integer(Offset) - 2,
         lager:info("Pattern operand get_candle(~p, Instr, ~p, ~p)", [HistStorageName, Length, OffInt]),
-        {
-          fun(Name) ->
-            online_history_worker:get_candle(HistStorageName, Name, Length, OffInt)
-          end,
-          Ctx}
+        case FixedInstr of
+          undefined ->
+            {
+              fun(Name) ->
+                online_history_worker:get_candle(HistStorageName, Name, Length, OffInt)
+              end,
+              Ctx
+            };
+          _ ->
+            {
+              fun(_Name) ->
+                online_history_worker:get_candle(HistStorageName, FixedInstr, Length, OffInt)
+              end,
+              Ctx
+            }
+        end
     end,
   NewCtx = update_referenced_frames(FrameName, TempCtx),
   ExtrFun =

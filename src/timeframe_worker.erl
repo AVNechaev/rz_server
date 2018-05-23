@@ -154,6 +154,7 @@ handle_cast({add_tick, Tick}, State = #state{candles_last_flushed = LastFlushed}
   end;
 %%---
 handle_cast(activate_fires, State) ->
+  derivatives:compute(storage_name(State#state.name)),
   refire_on_flush_candles(State),
   {noreply, State}.
 
@@ -241,6 +242,7 @@ reinit_state(TickTime, State = #state{duration = Duration, reinit_timeout = Reni
 
 %%--------------------------------------------------------------------
 flush_candles(State) ->
+  derivatives:compute(storage_name(State#state.name)),
   DT = calendar:gregorian_seconds_to_datetime(State#state.candles_start),
   Data = ets:tab2list(State#state.tid),
   update_sma_table(Data, State#state.sma_tid, State#state.known_smas),
@@ -261,6 +263,7 @@ log_expired_ticks(State, _) -> State.
 
 %%--------------------------------------------------------------------
 active_fires_fun(State, #candle{name = InstrName}, TickCandleTime) ->
+  derivatives:compute(storage_name(State#state.name)),
   patterns_executor:check_patterns({tick, State#state.name, InstrName}, TickCandleTime).
 inactive_fires_fun(_, _, _) -> ok.
 
@@ -275,7 +278,13 @@ refire_on_flush_candles(State) ->
   lager:info("CHECKING_FLUSH_PATTERNS (~p) at ~p", [State#state.name, CurrentTime]),
   ets:foldl(
     fun(#candle{name = InstrName}, _) ->
-      patterns_executor:check_patterns({candle, State#state.name, InstrName}, CurrentTime) end,
+      case derivatives:is_derivative(InstrName) of
+        false ->
+          patterns_executor:check_patterns({candle, State#state.name, InstrName}, CurrentTime);
+        true ->
+          ok
+      end
+    end,
     undefined,
     State#state.tid),
   lager:debug("CHECKING_FLUSH_PATTERNS completed"),
