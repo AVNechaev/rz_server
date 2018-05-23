@@ -18,6 +18,7 @@
 %%%===================================================================
 -spec is_derivative(InstrName :: instr_name()) -> boolean().
 is_derivative(<<"USDX">>) -> true;
+is_derivative(<<"USDY">>) -> true;
 is_derivative(_) -> false.
 
 %%--------------------------------------------------------------------
@@ -32,7 +33,10 @@ compute(Storage) ->
       end
     end,
     [],
-    [fun compute_usdx/1]).
+    [
+      fun compute_usdx/1,
+      fun compute_usdy/1
+    ]).
 
 %%%===================================================================
 %%% Internal functions
@@ -57,6 +61,28 @@ compute_usdx(StorageName) ->
       end,
   #candle{
     name = <<"USDX">>,
+    ask = F(#candle.ask),
+    bid = F(#candle.bid),
+    open = F(#candle.open),
+    high = F(#candle.high),
+    low = F(#candle.low),
+    close = F(#candle.close),
+    vol = trunc(F(#candle.vol))
+  }.
+
+compute_usdy(StorageName) ->
+  USDCAD = extract(<<"USDCAD.FXCM">>, StorageName),
+  USDSEK = extract(<<"USDSEK.FXCM">>, StorageName),
+  USDCHF = extract(<<"USDCHF.FXCM">>, StorageName),
+
+  F = fun(Idx) ->
+    50.14348112 *
+      math:pow(erlang:element(Idx, USDCAD), 0.091) *
+      math:pow(erlang:element(Idx, USDSEK), 0.042) *
+      math:pow(erlang:element(Idx, USDCHF), 0.036)
+      end,
+  #candle{
+    name = <<"USDY">>,
     ask = F(#candle.ask),
     bid = F(#candle.bid),
     open = F(#candle.open),
