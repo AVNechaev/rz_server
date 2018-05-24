@@ -56,7 +56,6 @@ init([]) ->
   Tables = rz_util:get_env(rz_server, cache_tables),
   MaxSize = rz_util:get_env(rz_server, cache_size),
   Timeout = rz_util:get_env(rz_server, cache_timeout),
-  Fields = [[",", FieldName] || {_Type, FieldName, _Depth} <- rz_util:get_env(rz_server, sma)],
   lists:map(
     fun({Name, TableName, _Options}) ->
       StmtName = init_context(Name),
@@ -65,11 +64,9 @@ init([]) ->
         [
           "INSERT INTO ",
           TableName,
-          " (name, ts, open, high, low, close, volume",
-          Fields,
-          ") VALUES (?,?,?,?,?,?,?",
-          lists:duplicate(erlang:length(rz_util:get_env(rz_server, sma)), ",?"),
-          ")"]
+          " (name, ts, open, high, low, close, volume)",
+          " VALUES (?,?,?,?,?,?,?)"
+        ]
       )
     end,
     Tables),
@@ -114,11 +111,10 @@ flush(Data, _State) ->
       C#candle.close,
       C#candle.vol
     ],
-    SMAValues = [V || {_, _, V} <- C#candle.smas],
     emysql:execute(
       mysql_candles_store,
       CacheCtx,
-      VV ++ SMAValues
+      VV
     )
   end,
   lists:foreach(StoreFun, Data),
