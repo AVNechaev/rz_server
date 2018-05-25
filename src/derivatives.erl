@@ -12,7 +12,7 @@
 -include("internal.hrl").
 %% API
 -export([compute/1, is_derivative/1]).
-
+-compile([{parse_transform, lager_transform}]).
 %%%===================================================================
 %%% API
 %%%===================================================================
@@ -48,11 +48,19 @@ compute_usdx(StorageName) ->
   USDSEK = extract(<<"USDSEK.FXCM">>, StorageName),
   USDCHF = extract(<<"USDCHF.FXCM">>, StorageName),
 
+  InvF = fun(C) ->
+    A = C#candle.high,
+    C#candle{high = C#candle.low, low = A}
+    end,
+
+  InvEURUSD = InvF(EURUSD),
+  InvGBPUSD = InvF(GBPUSD),
+
   F = fun(Idx) ->
     50.14348112 *
-      math:pow(1 / erlang:element(Idx, EURUSD), 0.576) *
-      math:pow(erlang:element(Idx, USDJPY), 0.136) *
-      math:pow(1 / erlang:element(Idx, GBPUSD), 0.119) *
+      math:pow(1 / erlang:element(Idx, InvEURUSD), 0.576) *
+      math:pow(erlang:element(Idx, USDJPY)        , 0.136) *
+      math:pow(1 / erlang:element(Idx, InvGBPUSD), 0.119) *
       math:pow(erlang:element(Idx, USDCAD), 0.091) *
       math:pow(erlang:element(Idx, USDSEK), 0.042) *
       math:pow(erlang:element(Idx, USDCHF), 0.036)
@@ -65,7 +73,7 @@ compute_usdx(StorageName) ->
     high = F(#candle.high),
     low = F(#candle.low),
     close = F(#candle.close),
-    vol = trunc(F(#candle.vol))
+    vol = 1
   }.
 
 %%--------------------------------------------------------------------

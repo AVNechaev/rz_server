@@ -367,8 +367,9 @@ reset_candle_time(TS, State = #state{duration = Duration, stock_timezone = Stock
 %%--------------------------------------------------------------------
 update_derivatives(State) ->
   lists:map(
-    fun(#candle{name = N, bid = B, ask = A, close = C, vol = V}) ->
-      update_current_candle(#tick{name = N, ask = A, bid = B, last_vol = V, last_price = C}, State)
+    fun(C) ->
+      candle_to_memcached(C, State),
+      ets:insert(State#state.tid, C)
     end,
     derivatives:compute(storage_name(State#state.name))
   ).
