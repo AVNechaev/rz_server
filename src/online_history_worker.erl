@@ -68,7 +68,7 @@ set_instrs(ThisName, Instrs) -> gen_server:call(ThisName, {set_instrs, Instrs}).
 %%% gen_server callbacks
 %%%===================================================================
 init([Name, Params, Instrs]) ->
-  UniqInstrs = lists:usort(Instrs),
+  UniqInstrs = lists:usort(Instrs) ++ derivatives:list(),
   Storage = ets_limbuffer:create_storage(storage_name(Name)),
   Depth = proplists:get_value(history_depth, Params),
   Buffers = case proplists:get_value(buffers_on_the_fly, Params) of
@@ -108,7 +108,7 @@ handle_call({set_instrs, _}, _From, State = #state{buffer_on_the_fly = true}) ->
   {reply, ok, State};
 %%---
 handle_call({set_instrs, Instrs}, _From, State) ->
-  UniqInstrs = lists:usort(Instrs),
+  UniqInstrs = lists:usort(Instrs) ++ derivatives:list(),
   ok = ets_limbuffer:delete_buffers(State#state.storage),
   lists:foreach(
     fun(I) ->

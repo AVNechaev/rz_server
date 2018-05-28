@@ -11,7 +11,7 @@
 
 -include("internal.hrl").
 %% API
--export([compute/1, is_derivative/1]).
+-export([compute/1, is_derivative/1, list/0]).
 -compile([{parse_transform, lager_transform}]).
 %%%===================================================================
 %%% API
@@ -19,6 +19,10 @@
 -spec is_derivative(InstrName :: instr_name()) -> boolean().
 is_derivative(<<"USDX">>) -> true;
 is_derivative(_) -> false.
+
+%%--------------------------------------------------------------------
+-spec list() -> [instr_name()].
+list() -> [<<"USDX">>].
 
 %%--------------------------------------------------------------------
 -spec compute(StorageName :: atom()) -> [#candle{}].
