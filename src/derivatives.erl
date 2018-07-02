@@ -71,8 +71,8 @@ compute_usdx(StorageName) ->
       end,
   #candle{
     name = <<"USDX">>,
-    ask = 0,
-    bid = 0,
+    ask = 0.0,
+    bid = 0.0,
     open = F(#candle.open),
     high = F(#candle.high),
     low = F(#candle.low),
