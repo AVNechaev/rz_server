@@ -78,13 +78,15 @@ prepare_pattern_text({struct, Tokens}) ->
 do_candles(2, TF, [{struct, Candle}], Acc) -> Acc ++ [<<" AND ">>, candle_color(2, Candle, TF)];
 do_candles(CurNum, TF, [{struct, CurCandle}, {struct, NextCandle} | Rest], Acc) ->
   Data =
-      [
+    [
       <<" AND ">>,
       check_left_right(TF, CurNum, <<"high">>, <<"HIGH">>, CurCandle, NextCandle),
       <<" AND ">>,
       check_left_right(TF, CurNum, <<"low">>, <<"LOW">>, CurCandle, NextCandle),
       <<" AND ">>,
-      check_left_right(TF, CurNum, <<"close">>, <<"CLOSE">>, CurCandle, NextCandle)
+      check_left_right(TF, CurNum, <<"close">>, <<"CLOSE">>, CurCandle, NextCandle),
+      <<" AND ">>,
+      candle_color(CurNum, CurCandle, TF)
     ],
   do_candles(CurNum - 1, TF, [{struct, NextCandle} | Rest], Acc ++ Data).
 
