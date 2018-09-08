@@ -141,8 +141,17 @@ handle_call({remove_pattern, Id}, _From, State) ->
   end;
 %%---
 handle_call(init_patterns, _From, State) ->
+  NoErrExec =
+    fun(Pattern) ->
+      try
+        patterns_executor:load_pattern(Pattern)
+      catch M:E ->
+        lager:warning("An error at pattern load startup: ~p:~p:~p", [M, E, erlang:get_stacktrace()])
+      end,
+      ok
+    end,
   [
-    {ok, _} = patterns_executor:load_pattern(pt_to_pattern(Id, Text))
+    NoErrExec(pt_to_pattern(Id, Text))
     || #sel_res{id = Id, expr = Text} <-
     emysql:as_record(
       emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
@@ -155,10 +164,10 @@ handle_call(get_patterns_indexes, _From, State) ->
   Ret = [
     Id
     || #sel_res{id = Id} <-
-    emysql:as_record(
-      emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
-      sel_res,
-      record_info(fields, sel_res))
+      emysql:as_record(
+        emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
+        sel_res,
+        record_info(fields, sel_res))
   ],
   {reply, {ok, Ret}, State}.
 
