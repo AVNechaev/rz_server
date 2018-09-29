@@ -133,5 +133,6 @@ on_fired(PatIdx, {From, Frame, Instr}, VarFun, UTCCandlesTime, _State) ->
     VarFun(Instr)
   ),
   lager:debug("PATTERN ~p fired for {~p,~p; ~p} at ~p", [PatIdx, From, {Frame, Instr}, VarText, UTCCandlesTime]),
+  metrics:add_fire(),
   fires_cached_store:store(PatIdx, Instr, UTCCandlesTime, VarText),
   ok.

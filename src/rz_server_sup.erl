@@ -33,11 +33,13 @@ init([]) ->
   Names = [timeframe_worker:reg_name(N) || {N, _} <- rz_util:get_env(rz_server, frames)],
   TickFun =
     fun(Tick) ->
+      metrics:add_tick("IQFeed"),
       lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names)
     end,
 
   GDAXTickFun =
     fun(#{instr := Instr, time := Time, last_price := LastPrice}) ->
+      metrics:add_tick("GDAX"),
       Tick = #tick{
         ask = LastPrice,
         bid = LastPrice,
@@ -115,12 +117,15 @@ init([]) ->
       {port, rz_util:get_env(rz_server, http_port)},
       {backlog, 1000},
       {dispatch, [
+        {["metrics"], web_metrics, []}, % GET
         {["nyse", "instrs"], web_instruments, []}, %%PUT
         {["patterns"], web_patterns, []}, %% POST, GET
         {["patterns", pattern_id], web_single_pattern, []} %% PUT, DELETE
       ]}
     ]]},
     permanent, brutal_kill, worker, dynamic},
+
+  metrics:init(),
 
   {
     ok,

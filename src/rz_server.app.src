@@ -16,7 +16,8 @@
       mochiweb,
       webmachine,
       parsetools,
-      recon
+      recon,
+      prometheus
     ]},
     {mod, {rz_server_app, []}},
     {env, []}
