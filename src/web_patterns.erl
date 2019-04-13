@@ -76,7 +76,7 @@ prepare_pattern_text({struct, Tokens}) ->
 
 %%--------------------------------------------------------------------
 do_candles(2, TF, [{struct, Candle}], Acc) -> Acc ++ [<<" AND ">>, candle_color(2, Candle, TF)];
-do_candles(CurNum, TF, [{struct, CurCandle}, {struct, NextCandle} | Rest], Acc) ->
+do_candles(CurNum, TF, [{struct, CurCandle}, {struct, NextCandle} | Rest] = AllCandles, Acc) ->
   Data =
     [
       <<" AND ">>,
@@ -86,16 +86,32 @@ do_candles(CurNum, TF, [{struct, CurCandle}, {struct, NextCandle} | Rest], Acc) 
       <<" AND ">>,
       check_left_right(TF, CurNum, <<"close">>, <<"CLOSE">>, CurCandle, NextCandle),
       <<" AND ">>,
-      candle_color(CurNum, CurCandle, TF)
+      candle_color(CurNum, CurCandle, TF),
+      check_candle_over1(CurNum, TF, AllCandles)
     ],
   do_candles(CurNum - 1, TF, [{struct, NextCandle} | Rest], Acc ++ Data).
 
 %%--------------------------------------------------------------------
+%%check left & right candles 1-3-5-7, 2-4-6 etc
+check_candle_over1(CurNum, TF, [{struct, CurCandle}, {struct, _}, {struct, Over1Candle} | _Rest]) ->
+  [
+    << " AND ">>,
+    check_left_right(TF, CurNum, CurNum - 2, <<"high">>, <<"HIGH">>, CurCandle, Over1Candle),
+    <<" AND ">>,
+    check_left_right(TF, CurNum, CurNum - 2, <<"low">>, <<"LOW">>, CurCandle, Over1Candle)
+  ];
+%%---
+check_candle_over1(_, _, _) -> [].
+
+%%--------------------------------------------------------------------
 check_left_right(TF, CurNum, Param, InstrParam, LeftHandle, RightCandle) ->
+  check_left_right(TF, CurNum, CurNum - 1, Param, InstrParam, LeftHandle, RightCandle).
+
+check_left_right(TF, CurNum, NextNum, Param, InstrParam, LeftHandle, RightCandle) ->
   LVal = proplists:get_value(Param, LeftHandle),
   RVal = proplists:get_value(Param, RightCandle),
   CNumBin = integer_to_binary(CurNum),
-  NNumBin = integer_to_binary(CurNum - 1),
+  NNumBin = integer_to_binary(NextNum),
   [
     ?CANDLE_TEXT(TF, CNumBin, InstrParam),
     g_or_l(LVal, RVal),
