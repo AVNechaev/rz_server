@@ -186,7 +186,7 @@ update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, 
   case ets:lookup(Tid, Name) of
     [] ->
       NewCandle = #candle{name = Name, open = LP, close = LP, high = LP, low = LP, vol = LV, smas = SMAValues},
-      candle_to_memcached(NewCandle, State),
+      %%candle_to_memcached(NewCandle, State),
       true = ets:insert_new(Tid, NewCandle),
       NewCandle;
     [C] ->
@@ -216,7 +216,7 @@ update_current_candle(Tick = #tick{name = Name, last_price = LP, last_vol = LV, 
         low = proplists:get_value(#candle.low, U3, C#candle.low),
         smas = SMAValues
       },
-      candle_to_memcached(NewCandle, State),
+      %%candle_to_memcached(NewCandle, State),
       ets:update_element(Tid, C#candle.name, U3),
       NewCandle
   end.
@@ -251,9 +251,9 @@ flush_candles(State) ->
   ok = candles_cached_store:store(State#state.cache_context, DT, Data).
 
 %%--------------------------------------------------------------------
-candle_to_memcached(C = #candle{name = N}, State) ->
-  Key = <<N/binary, ",", (State#state.name_bin)/binary>>,
-  erlmc:set(Key, erlang:iolist_to_binary(timeframe_util:candle_to_json(C, State#state.candles_start_bin))).
+%%candle_to_memcached(C = #candle{name = N}, State) ->
+%%  Key = <<N/binary, ",", (State#state.name_bin)/binary>>,
+%%  erlmc:set(Key, erlang:iolist_to_binary(timeframe_util:candle_to_json(C, State#state.candles_start_bin))).
 
 %%--------------------------------------------------------------------
 log_expired_ticks(State = #state{expired_ticks = T}, Limit) when T > Limit ->
@@ -368,7 +368,7 @@ reset_candle_time(TS, State = #state{duration = Duration, stock_timezone = Stock
 update_derivatives(State) ->
   lists:map(
     fun(C) ->
-      candle_to_memcached(C, State),
+      %candle_to_memcached(C, State),
       ets:insert(State#state.tid, C)
     end,
     derivatives:compute(storage_name(State#state.name))
