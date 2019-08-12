@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_pattern/1, check_patterns/2, delete_pattern/1]).
+-export([start_link/0, load_pattern/1, check_patterns/2, delete_pattern/1, compile_pattern/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -66,7 +66,7 @@ init([]) ->
 %%--------------------------------------------------------------------
 handle_call({load_pattern, Pat}, _From, State) ->
   try
-    {ok, {Fun, Ctx}, VarFun} = compile_pattern(Pat),
+    {ok, TimeCode, {Fun, Ctx}, VarFun} = compile_pattern(Pat),
     lager:info("Pattern compiled; Context: ~p", [Ctx]),
     ReferencedFrames = proplists:get_value(referenced_frames, Ctx, []),
     UsingCurrentCandle =
@@ -99,7 +99,16 @@ handle_call({load_pattern, Pat}, _From, State) ->
             ?NO_DATA -> false
           end
       end,
-    pat_exec_worker:load_pattern(elect(State), Pat, {AnchoredFun, VarFun}),
+    TimeCodedFun =
+      fun(FireData) ->
+        case filter_by_timecode(TimeCode) of
+          true ->
+            AnchoredFun(FireData);
+          false ->
+            false
+        end
+      end,
+    pat_exec_worker:load_pattern(elect(State), Pat, {TimeCodedFun, VarFun}),
 
     {reply, {ok, ReferencedFrames}, State}
   catch
@@ -141,8 +150,8 @@ compile_pattern(#pattern{text = PatternText}) -> compile_pattern(PatternText);
 compile_pattern(PT) when is_binary(PT) -> compile_pattern(binary_to_list(PT));
 compile_pattern(PatternText) ->
   {ok, Tokens, _} = patterns_lex:string(PatternText),
-  {ok, {ParsedPattern, ParsedVariables}} = patterns_parser:parse(Tokens),
-  {ok, transform_pattern(ParsedPattern, []), transform_variables(ParsedVariables)}.
+  {ok, {TimeCode, ParsedPattern, ParsedVariables}} = patterns_parser:parse(Tokens),
+  {ok, extract_timecode(TimeCode), transform_pattern(ParsedPattern, []), transform_variables(ParsedVariables)}.
 
 %%--------------------------------------------------------------------
 -spec transform_pattern(tuple(), list()) -> {logic_fun() | number_fun(), list()}.
@@ -334,3 +343,11 @@ do_transform_variables(undefined, Acc) -> lists:reverse(Acc);
 do_transform_variables({{variable, _, Name}, VarData, Rest}, Acc) ->
   {F, _} = transform_pattern(VarData, []),
   do_transform_variables(Rest, [{Name, F} | Acc]).
+
+%%--------------------------------------------------------------------
+extract_timecode({time_code, TokenLine, TCData}) when is_list(TCData) -> extract_timecode({time_code, TokenLine, list_to_binary(TCData)});
+extract_timecode({time_code, _, <<"TC:=", TC/binary>>}) -> {time_code, TC}.
+
+%%--------------------------------------------------------------------
+filter_by_timecode({time_code, _TC}) ->
+  false.
