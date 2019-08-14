@@ -14,8 +14,9 @@
 }).
 
 -type frame_name() :: atom().
+-type tc_check_fun() :: fun((undefined | {time_code, binary()}) -> boolean()).
 -type pattern_fun_arg() :: {tick, frame_name(), instr_name()} | {candle, frame_name(), instr_name()}.
--type pattern_fun() :: fun((Instr :: pattern_fun_arg()) -> boolean()).
+-type pattern_fun() :: fun((Instr :: pattern_fun_arg(), TCFun :: tc_check_fun()) -> boolean()).
 -type var_data() :: {VarName :: iodata(), Value :: float() | undefined}.
 -type var_fun() :: fun((InstrName :: instr_name()) -> [var_data()]).
 

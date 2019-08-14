@@ -12,7 +12,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0, load_pattern/1, check_patterns/2, delete_pattern/1, compile_pattern/1]).
+-export([start_link/0, load_pattern/1, check_patterns/2, delete_pattern/1, compile_pattern/1, load_timecodes_data/1]).
 
 %% gen_server callbacks
 -export([init/1,
@@ -53,6 +53,10 @@ delete_pattern(PatId) -> gen_server:call(?SERVER, {delete_pattern, PatId}).
 %% см timeframe_worker:universal_to_candle_time()
 -spec check_patterns(Instr :: pattern_fun_arg(), UniversalCandleTime :: pos_integer()) -> ok.
 check_patterns(Instr, UniversalCandleTime) -> gen_server:cast(?SERVER, {check_patterns, Instr, UniversalCandleTime}).
+
+%%--------------------------------------------------------------------
+-spec load_timecodes_data(TCData :: [pat_exec_worker:timecode()]) -> ok.
+load_timecodes_data(TCData) -> gen_server:call(?SERVER, {load_timecodes_data, TCData}).
 
 %%%===================================================================
 %%% gen_server callbacks
@@ -100,8 +104,8 @@ handle_call({load_pattern, Pat}, _From, State) ->
           end
       end,
     TimeCodedFun =
-      fun(FireData) ->
-        case filter_by_timecode(TimeCode) of
+      fun(FireData, TimecodeFun) ->
+        case TimecodeFun(TimeCode) of
           true ->
             AnchoredFun(FireData);
           false ->
@@ -119,6 +123,11 @@ handle_call({load_pattern, Pat}, _From, State) ->
 handle_call({delete_pattern, PatId}, _From, State) ->
   lager:info("Deleting pattern ~p", [PatId]),
   [pat_exec_worker:delete_pattern(Pid, PatId) || Pid <- State#state.workers],
+  {reply, ok, State};
+%%---
+handle_call({load_timecodes_data, TCData}, _From, State) ->
+  lager:info("Loading new Timecodes data..."),
+  [pat_exec_worker:load_timecodes_data(Pid, TCData) || Pid <- State#state.workers],
   {reply, ok, State}.
 
 %%--------------------------------------------------------------------
@@ -345,9 +354,6 @@ do_transform_variables({{variable, _, Name}, VarData, Rest}, Acc) ->
   do_transform_variables(Rest, [{Name, F} | Acc]).
 
 %%--------------------------------------------------------------------
+extract_timecode(undefined) -> undefined;
 extract_timecode({time_code, TokenLine, TCData}) when is_list(TCData) -> extract_timecode({time_code, TokenLine, list_to_binary(TCData)});
 extract_timecode({time_code, _, <<"TC:=", TC/binary>>}) -> {time_code, TC}.
-
-%%--------------------------------------------------------------------
-filter_by_timecode({time_code, _TC}) ->
-  false.
