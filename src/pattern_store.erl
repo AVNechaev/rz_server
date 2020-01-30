@@ -38,7 +38,7 @@
 -spec(start_link() -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
 start_link() ->
   {ok, Ret} = gen_server:start_link({local, ?SERVER}, ?MODULE, [], []),
-  gen_server:call(?SERVER, init_patterns),
+  gen_server:cast(?SERVER, init_patterns),
   {ok, Ret}.
 
 %%--------------------------------------------------------------------
@@ -140,11 +140,23 @@ handle_call({remove_pattern, Id}, _From, State) ->
       {reply, ok, State}
   end;
 %%---
-handle_call(init_patterns, _From, State) ->
+handle_call(get_patterns_indexes, _From, State) ->
+  Ret = [
+    Id
+    || #sel_res{id = Id} <-
+      emysql:as_record(
+        emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
+        sel_res,
+        record_info(fields, sel_res))
+  ],
+  {reply, {ok, Ret}, State}.
+
+%%--------------------------------------------------------------------
+handle_cast(init_patterns, State) ->
   NoErrExec =
     fun(Pattern) ->
       try
-        patterns_executor:load_pattern(Pattern)
+        {ok, _} = patterns_executor:load_pattern(Pattern)
       catch M:E ->
         lager:warning("An error at pattern load startup: ~p:~p:~p", [M, E, erlang:get_stacktrace()])
       end,
@@ -158,21 +170,9 @@ handle_call(init_patterns, _From, State) ->
       sel_res,
       record_info(fields, sel_res))
   ],
-  {reply, ok, State};
-%%---
-handle_call(get_patterns_indexes, _From, State) ->
-  Ret = [
-    Id
-    || #sel_res{id = Id} <-
-      emysql:as_record(
-        emysql:execute(mysql_config_store, <<"select id, expr from PATTERNS">>),
-        sel_res,
-        record_info(fields, sel_res))
-  ],
-  {reply, {ok, Ret}, State}.
+  {noreply, State}.
 
 %%--------------------------------------------------------------------
-handle_cast(_Request, _State) -> exit(handle_cast_unsupported).
 handle_info(_Info, _State) -> exit(handle_info_unsupported).
 terminate(_Reason, _State) -> ok.
 code_change(_OldVsn, State, _Extra) -> {ok, State}.
