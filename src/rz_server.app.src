@@ -13,6 +13,7 @@
       rz_util,
       iqfeed_client,
       gdax_client,
+      polygon_client,
       erlmc,
       erlang_localtime,
       mochiweb,
