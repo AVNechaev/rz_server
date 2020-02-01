@@ -31,15 +31,29 @@ start_link() ->
 
 init([]) ->
   Names = [timeframe_worker:reg_name(N) || {N, _} <- rz_util:get_env(rz_server, frames)],
-  TickFun =
-    fun(Tick) ->
-      metrics:add_tick("IQFeed"),
-      lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names)
-    end,
+%%  TickFun =
+%%    fun(Tick) ->
+%%      metrics:add_tick("IQFeed"),
+%%      lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names)
+%%    end,
 
   GDAXTickFun =
     fun(#{instr := Instr, time := Time, last_price := LastPrice}) ->
       metrics:add_tick("GDAX"),
+      Tick = #tick{
+        ask = LastPrice,
+        bid = LastPrice,
+        last_price = LastPrice,
+        last_vol = 0,
+        name = Instr,
+        time = Time
+      },
+      lists:foreach(fun(N) -> timeframe_worker:add_tick(N, Tick) end, Names)
+    end,
+
+  PolygonTickFun =
+    fun(#{instr := Instr, time := Time, last_price := LastPrice}) ->
+      metrics:add_tick("Polygon"),
       Tick = #tick{
         ask = LastPrice,
         bid = LastPrice,
@@ -103,12 +117,16 @@ init([]) ->
     {pattern_store, start_link, []},
     permanent, brutal_kill, worker, [pattern_store]},
 
-  IQFeed = {iqfeed,
-    {iq_sup, start_link, [TickFun]},
-    permanent, infinity, supervisor, [iq_sup]},
+%%  IQFeed = {iqfeed,
+%%    {iq_sup, start_link, [TickFun]},
+%%    permanent, infinity, supervisor, [iq_sup]},
 
   GDAX = {gdax,
     {gdax_chan, start_link, [GDAXTickFun]},
+    permanent, brutal_kill, worker, [gdax_chan]},
+
+  Polygon = {polygon,
+    {polygon_chan, start_link, [PolygonTickFun]},
     permanent, brutal_kill, worker, [gdax_chan]},
 
   Web = {webmachine,
@@ -138,8 +156,9 @@ init([]) ->
         FiresCache,
         PatternsExecutor,
         PatternsStore,
-        IQFeed,
+%%        IQFeed,
         GDAX,
+        Polygon,
         Web
       ])}}.
 
