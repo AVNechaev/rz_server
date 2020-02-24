@@ -84,21 +84,22 @@ candle_to_json(#candle{name = N, open = O, high = H, low = L, close = C, vol = V
     TableName :: binary(),
     MaxDepth :: integer(),
     SMAs :: [{term()}]) -> [{SMAName :: atom(), Q :: #sma_q{}}].
-populate_sma_queues(HistName, Instr, TableName, MaxDepth, SMAs) ->
+populate_sma_queues(HistName, Instr, TableName, _MaxDepth, SMAs) ->
   lager:info("Filling the sma queue [~p:~p]", [Instr, TableName]),
-  SQL = [
-    "SELECT open,close,high,low,volume as vol FROM ",
-    TableName,
-    " WHERE name='",
-    Instr, "' ",
-    "ORDER BY ts DESC LIMIT ",
-    integer_to_binary(MaxDepth)
-  ],
-  Data = lists:reverse(
-    emysql:as_record(
-      emysql:execute(mysql_candles_store, SQL),
-      last_price_rec,
-      record_info(fields, last_price_rec))),
+%  SQL = [
+%    "SELECT open,close,high,low,volume as vol FROM ",
+%    TableName,
+%    " WHERE name='",
+%    Instr, "' ",
+%    "ORDER BY ts DESC LIMIT ",
+%    integer_to_binary(MaxDepth)
+%  ],
+%  Data = lists:reverse(
+%    emysql:as_record(
+%      emysql:execute(mysql_candles_store, SQL),
+%      last_price_rec,
+%      record_info(fields, last_price_rec))),
+  Data = [],
   ResQ =
     lists:foldl(
       fun(Rec = #last_price_rec{close = V}, Queues) ->
