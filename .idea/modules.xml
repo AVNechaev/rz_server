@@ -2,7 +2,6 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/../gdax_client/gdax_client.iml" filepath="$PROJECT_DIR$/../gdax_client/gdax_client.iml" />
       <module fileurl="file://$PROJECT_DIR$/../gdax/gdax_client/gdax_client.iml" filepath="$PROJECT_DIR$/../gdax/gdax_client/gdax_client.iml" />
       <module fileurl="file://$PROJECT_DIR$/../iqfeed_client/iqfeed_client.iml" filepath="$PROJECT_DIR$/../iqfeed_client/iqfeed_client.iml" />
       <module fileurl="file://$PROJECT_DIR$/../polygon_client/polygon_client.iml" filepath="$PROJECT_DIR$/../polygon_client/polygon_client.iml" />
