@@ -309,7 +309,17 @@ transform_instr(_, Data, FixedInstr, Ctx) ->
   {
     fun(Instr) ->
       case GetCandleFun(Instr) of
-        {ok, C} -> ExtrFun(C);
+        {ok, C} ->
+          case ExtrFun(C) of
+            Num when is_number(Num) ->
+              case abs(Num) of
+                Lower when Lower < 0.001 ->
+                  lager:warning("Zero value detected: [~p; ~p; ~p]: ~p", [HistStorageName, Instr, Val, Lower]),
+                  throw(?NO_DATA);
+                Normal -> Normal
+              end;
+            _ -> throw(?NO_DATA)
+          end;
         {error, not_found} -> throw(?NO_DATA)
       end
     end,
